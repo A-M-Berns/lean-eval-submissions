@@ -5,6 +5,8 @@ import Mathlib.Tactic
 open Set
 open scoped Topology
 
+namespace Submission
+
 lemma convex_nonpos_on_Icc_of_endpoints_nonpos
     {w : ℝ → ℝ}
     (hw : ConvexOn ℝ (Set.Icc (0 : ℝ) 1) w)
@@ -95,3 +97,5 @@ theorem bvp_comparison
   have hwx := convex_nonpos_on_Icc_of_endpoints_nonpos hw_convex hw0 hw1 x hx
   dsimp [w] at hwx
   linarith
+
+end Submission

@@ -9,6 +9,8 @@ import Mathlib.Tactic
 open Set
 open scoped Topology
 
+namespace Submission
+
 noncomputable def wronskian (y₁ y₂ : ℝ → ℝ) : ℝ → ℝ :=
   fun x => y₁ x * deriv y₂ x - y₂ x * deriv y₁ x
 
@@ -394,3 +396,5 @@ theorem sturm_separation (p q y₁ y₂ : ℝ → ℝ) (a b : ℝ) (hab : a < b)
       exact hW₀' hzero
   exact existsUnique_y₂_zero_of_wronskian_ne_on_Icc
     hab hy₁_Icc hy₂_Icc hW_ne_Icc hza hzb hne
+
+end Submission
