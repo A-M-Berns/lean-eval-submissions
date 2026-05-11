@@ -1,22 +1,21 @@
 import Mathlib.Analysis.Convex.StdSimplex
 import Mathlib.Analysis.Matrix.Spectrum
 import Mathlib.Analysis.Normed.Algebra.GelfandFormula
-import Mathlib.Combinatorics.SimpleGraph.DegreeSum
 import Mathlib.Data.Finset.Max
 import Mathlib.LinearAlgebra.Eigenspace.Matrix
 import Mathlib.LinearAlgebra.Matrix.Irreducible.Defs
 import Mathlib.LinearAlgebra.Matrix.ToLin
-import Mathlib.Logic.Function.Defs
 import Mathlib.Tactic
-import Mathlib.Data.Real.Archimedean
-import Mathlib.Topology.Order.IntermediateValue
 
-open scoped ENNReal Matrix
-open scoped unitInterval
+open scoped ENNReal
 
 namespace PerronFrobenius
 
 variable {n : Type*} [Fintype n] [DecidableEq n]
+
+section LinearAlgebraPart
+
+open scoped Matrix
 
 omit [DecidableEq n] in
 lemma mulVec_nonneg_of_nonneg {A : Matrix n n ℝ} {v : n → ℝ}
@@ -485,5477 +484,3407 @@ lemma exists_positive_eigenvector_at_spectralRadius_of_normalizedOneAddMulVec_ha
   obtain ⟨v, hv⟩ := hfp
   exact exists_positive_eigenvector_at_spectralRadius_of_normalizedOneAddMulVec_fixed hA hv
 
-lemma exists_eigenvector_at_spectralRadius_of_mem_spectrum
-    {A : Matrix n n ℝ}
-    (hρ : (spectralRadius ℝ A).toReal ∈ spectrum ℝ A) :
-    ∃ v : n → ℝ,
-      Module.End.HasEigenvector (Matrix.toLin' A) (spectralRadius ℝ A).toReal v := by
-  exact (hasEigenvalue_toLin'_of_mem_spectrum hρ).exists_hasEigenvector
+end LinearAlgebraPart
 
-lemma unitInterval_exists_isFixedPt_of_continuous
-    (f : unitInterval → unitInterval) (hf : Continuous f) :
-    ∃ x, Function.IsFixedPt f x := by
-  obtain ⟨x, hx⟩ :=
-    intermediate_value_univ₂ (a := (0 : unitInterval)) (b := (1 : unitInterval))
-      continuous_subtype_val (continuous_subtype_val.comp hf)
-      (unitInterval.nonneg (f 0)) (unitInterval.le_one (f 1))
-  exact ⟨x, Subtype.ext hx.symm⟩
 
-lemma stdSimplex_fin_two_exists_isFixedPt_of_continuous
-    (f : stdSimplex ℝ (Fin 2) → stdSimplex ℝ (Fin 2))
-    (hf : Continuous f) :
-    ∃ x, Function.IsFixedPt f x := by
-  let e := stdSimplexHomeomorphUnitInterval
-  let g : unitInterval → unitInterval := fun x => e (f (e.symm x))
-  have hg : Continuous g := e.continuous.comp (hf.comp e.symm.continuous)
-  obtain ⟨x, hx⟩ := unitInterval_exists_isFixedPt_of_continuous g hg
-  refine ⟨e.symm x, ?_⟩
-  apply e.injective
-  exact hx
+section ScarfLib
 
-lemma exists_positive_eigenvector_at_spectralRadius_fin_two
-    {A : Matrix (Fin 2) (Fin 2) ℝ} (hA : A.IsIrreducible) :
-    ∃ v : Fin 2 → ℝ,
-      Module.End.HasEigenvector (Matrix.toLin' A) (spectralRadius ℝ A).toReal v ∧
-        (∀ i, 0 < v i) := by
-  exact
-    exists_positive_eigenvector_at_spectralRadius_of_normalizedOneAddMulVec_has_fixedPoint
-      hA
-      (stdSimplex_fin_two_exists_isFixedPt_of_continuous
-        (normalizedOneAddMulVec A hA.nonneg)
-        (continuous_normalizedOneAddMulVec A hA.nonneg))
 
-/-- Integer grid points of mesh `1 / N` in the standard simplex. -/
-def simplexGrid (N : ℕ) : Type _ :=
-  {a : n → ℕ // ∑ i, a i = N}
+section fiberlemma
 
-namespace simplexGrid
+open Finset
 
-noncomputable instance instFintype (N : ℕ) : Fintype (simplexGrid (n := n) N) :=
-  Fintype.ofInjective
-    (fun a : simplexGrid (n := n) N =>
-      fun i : n =>
-        (⟨a.1 i, Nat.lt_succ_of_le <| by
-          have hi_le : a.1 i ≤ ∑ j, a.1 j :=
-            Finset.single_le_sum (fun j _ => Nat.zero_le (a.1 j)) (Finset.mem_univ i)
-          simpa [a.2] using hi_le⟩ : Fin (N + 1)))
-    (by
-      intro a b hab
-      apply Subtype.ext
-      funext i
-      exact congrArg Fin.val (congrFun hab i))
 
-noncomputable instance instDecidableEq (N : ℕ) :
-    DecidableEq (simplexGrid (n := n) N) :=
-  Classical.decEq _
+variable {α : Type u} {β : Type v} [DecidableEq α] [DecidableEq β]
 
-noncomputable def toStdSimplex {N : ℕ} (hN : 0 < N) (a : simplexGrid (n := n) N) :
-    stdSimplex ℝ n := by
-  refine ⟨fun i => (a.1 i : ℝ) / (N : ℝ), ?_⟩
-  constructor
-  · intro i
-    positivity
-  · rw [← Finset.sum_div]
-    rw [← Nat.cast_sum, a.2]
-    field_simp [Nat.cast_ne_zero.mpr (Nat.ne_of_gt hN)]
+lemma injOn_sdiff (s : Finset α) (f : α → β) (h : s.card = (Finset.image f s).card + 1) : ∃ a b, a ∈ s ∧ b ∈ s ∧ f a = f b ∧ a ≠ b ∧ Set.InjOn f (s \ ({a, b} : Finset α)) := by
+  have of_card_domain_eq_card_image_succ  (s : Finset α) (f : α → β) (h : s.card = (Finset.image f s).card + 1) :
+  ∃ a b, a ∈ s ∧ b ∈ s ∧ f a = f b ∧ a ≠ b := by
+    suffices ¬ Set.InjOn f s by
+      contrapose! this
+      tauto
+    by_contra h1
+    linarith [Finset.card_image_of_injOn h1]
+  obtain ⟨a, b, as, bs, h1, h2⟩ := of_card_domain_eq_card_image_succ s f h
+  have absub : {a, b} ⊆ s :=  Finset.insert_subset as (Finset.singleton_subset_iff.mpr bs)
+  use a, b
+  repeat apply And.intro;assumption
+  rw [←Finset.coe_sdiff]
+  apply Finset.injOn_of_card_image_eq
+  rw [Finset.card_sdiff]
+  · have : (Finset.image f (s \ {a, b})).card = (Finset.image f s).card - 1 := by
+      have aux1 : ∀ c, c ∈ s → c ≠ a → c ≠ b → f c ≠ f a := by
+        intro c cs ca cb fcfa
+        have cardabc : ({a, b, c} : Finset α).card = 3 := by
+          rw [Finset.card_eq_three]
+          use a, b, c
+          tauto
+        have abcss : {a, b, c} ⊆ s := by
+          apply Finset.insert_subset as
+          apply Finset.insert_subset bs (by simp [cs])
+        have : (image f s).card < s.card - 1 :=
+          calc
+            _ = (image f ((s \ {a, b, c}) ∪ {a, b, c})).card :=
+              congrArg _ (congrArg _ (Eq.symm (sdiff_union_of_subset abcss)))
+            _ = (image f (s \ {a, b, c}) ∪ image f {a, b, c}).card :=
+              congrArg _ (Finset.image_union _ _)
+            _ ≤ (image f (s \ {a, b, c})).card + (image f {a, b, c}).card :=
+              Finset.card_union_le _ _
+            _ = (image f (s \ {a, b, c})).card + 1 := by
+              simp [Finset.card_eq_one]
+              exact ⟨f a, by simp [←h1, fcfa]⟩
+            _ ≤ (s \ {a, b, c}).card + 1 := by
+              simp [Finset.card_image_le]
+            _ = s.card - 3 + 1 := by
+              rw [Finset.card_sdiff_of_subset abcss, cardabc]
+            _ < _ := by
+              have : 2 < s.card := by
+                have := Finset.card_le_card abcss
+                omega
+              omega
+        omega
+      have aux2 : Finset.image f (s \ {a, b}) = Finset.image f s \ {f a} := by
+        ext x
+        constructor <;> intro h1'
+        · obtain ⟨c, csdiff, fcx⟩ := Finset.mem_image.1 h1'
+          obtain ⟨cs, cneab⟩ := Finset.mem_sdiff.1 csdiff
+          simp at cneab
+          simp
+          exact ⟨⟨c, cs, fcx⟩, by simp [← fcx]; exact aux1 c cs cneab.1 cneab.2⟩
+        · simp at h1'
+          obtain ⟨c, cs, fcx⟩ := h1'.1
+          simp [←fcx]
+          use c
+          simp [cs]
+          by_contra! hf
+          by_cases ceqa : c = a
+          · rw [ceqa] at fcx; rw [fcx] at h1'; tauto
+          · rw [hf ceqa, ←h1] at fcx; rw [fcx] at h1; tauto
+      rw [aux2, Finset.card_sdiff_of_subset (by simp; exact ⟨a, as, rfl⟩), card_singleton]
+    have hpair_inter : #(({a, b} : Finset α) ∩ s) = 2 := by
+      have hinter : ({a, b} : Finset α) ∩ s = {a, b} := Finset.inter_eq_left.mpr absub
+      rw [hinter, Finset.card_pair h2]
+    rw [this, hpair_inter, h]
+    omega
 
-omit [DecidableEq n] in
-lemma dist_toStdSimplex_le_of_forall_abs_sub_le {N : ℕ} (hN : 0 < N)
-    {C : ℝ} (hC : 0 ≤ C) {a b : simplexGrid (n := n) N}
-    (hcoord : ∀ i, |(a.1 i : ℝ) - (b.1 i : ℝ)| ≤ C) :
-    dist (toStdSimplex hN a) (toStdSimplex hN b) ≤ C / (N : ℝ) := by
-  change dist (fun i : n => (a.1 i : ℝ) / (N : ℝ))
-      (fun i : n => (b.1 i : ℝ) / (N : ℝ)) ≤ C / (N : ℝ)
-  rw [dist_pi_le_iff (div_nonneg hC (by positivity))]
-  intro i
-  rw [Real.dist_eq]
-  have hdiv :
-      (a.1 i : ℝ) / (N : ℝ) - (b.1 i : ℝ) / (N : ℝ) =
-        ((a.1 i : ℝ) - (b.1 i : ℝ)) / (N : ℝ) := by
-    ring
-  rw [hdiv, abs_div]
-  have hNabs : |(N : ℝ)| = (N : ℝ) := abs_of_pos (Nat.cast_pos.mpr hN)
-  rw [hNabs]
-  exact div_le_div_of_nonneg_right (hcoord i) (by positivity)
+end fiberlemma
 
-def vertex (N : ℕ) (i : n) : simplexGrid (n := n) N :=
-  ⟨fun j => if j = i then N else 0, by simp⟩
 
-@[simp]
-lemma vertex_apply_self (N : ℕ) (i : n) :
-    (vertex (n := n) N i).1 i = N := by
-  simp [vertex]
+open Classical
+open Finset
 
-@[simp]
-lemma vertex_apply_ne (N : ℕ) {i j : n} (hij : j ≠ i) :
-    (vertex (n := n) N i).1 j = 0 := by
-  simp [vertex, hij]
+variable {T : Type*} [Inhabited T]
+variable {Idx : Type*}
 
-lemma color_vertex_of_boundary {N : ℕ} (c : simplexGrid (n := n) N → n)
-    (hc : ∀ (a : simplexGrid (n := n) N) (i : n), a.1 i = 0 → c a ≠ i) (i : n) :
-    c (vertex (n := n) N i) = i := by
-  by_contra hne
-  have hzero : (vertex (n := n) N i).1 (c (vertex (n := n) N i)) = 0 := by
-    exact vertex_apply_ne (n := n) N hne
-  exact (hc (vertex (n := n) N i) (c (vertex (n := n) N i)) hzero) rfl
+class IndexedLOrder (Idx T :Type*) where
+  IST : Idx → LinearOrder T
 
-lemma color_surjective_of_boundary {N : ℕ} (c : simplexGrid (n := n) N → n)
-    (hc : ∀ (a : simplexGrid (n := n) N) (i : n), a.1 i = 0 → c a ≠ i) :
-    Function.Surjective c := by
-  intro i
-  exact ⟨vertex (n := n) N i, color_vertex_of_boundary c hc i⟩
+instance : FunLike (IndexedLOrder Idx T) Idx (LinearOrder T) where
+  coe := fun a => a.IST
+  coe_injective' := fun f g h => by cases f; cases g; congr
 
-lemma exists_color_of_boundary {N : ℕ} (c : simplexGrid (n := n) N → n)
-    (hc : ∀ (a : simplexGrid (n := n) N) (i : n), a.1 i = 0 → c a ≠ i) (i : n) :
-    ∃ a : simplexGrid (n := n) N, c a = i :=
-  color_surjective_of_boundary c hc i
 
-lemma image_univ_color_of_boundary {N : ℕ} (c : simplexGrid (n := n) N → n)
-    (hc : ∀ (a : simplexGrid (n := n) N) (i : n), a.1 i = 0 → c a ≠ i) :
-    (Finset.univ.image c : Finset n) = Finset.univ := by
-  classical
-  apply Finset.ext
-  intro i
-  simp only [Finset.mem_image, Finset.mem_univ, true_and, iff_true]
-  exact exists_color_of_boundary c hc i
+variable [IST : IndexedLOrder Idx T]
 
-def UnitClose {N : ℕ} (a b : simplexGrid (n := n) N) : Prop :=
-  ∀ j : n, |(a.1 j : ℝ) - (b.1 j : ℝ)| ≤ (1 : ℝ)
+set_option quotPrecheck false
 
-noncomputable def reindex {m : Type*} [Fintype m] (e : n ≃ m) {N : ℕ} :
-    simplexGrid (n := n) N ≃ simplexGrid (n := m) N where
-  toFun a :=
-    ⟨fun j => a.1 (e.symm j), by
-      simpa [a.2] using (Equiv.sum_comp e.symm a.1)⟩
-  invFun a :=
-    ⟨fun i => a.1 (e i), by
-      simpa [a.2] using (Equiv.sum_comp e a.1)⟩
-  left_inv a := by
-    apply Subtype.ext
-    funext i
-    simp
-  right_inv a := by
-    apply Subtype.ext
-    funext i
-    simp
+local notation  lhs "<[" i "]" rhs => (IST i).lt lhs rhs
+local notation  lhs "≤[" i "]" rhs => (IST i).le lhs rhs
 
-omit [DecidableEq n] in
-@[simp]
-lemma reindex_apply {m : Type*} [Fintype m] (e : n ≃ m) {N : ℕ}
-    (a : simplexGrid (n := n) N) (j : m) :
-    ((reindex (n := n) e) a).1 j = a.1 (e.symm j) :=
-  rfl
+namespace IndexedLOrder
+variable (sigma : Finset T) (C : Finset Idx)
 
-omit [DecidableEq n] in
-@[simp]
-lemma reindex_symm_apply {m : Type*} [Fintype m] (e : n ≃ m) {N : ℕ}
-    (a : simplexGrid (n := m) N) (i : n) :
-    ((reindex (n := n) e).symm a).1 i = a.1 (e i) :=
-  rfl
 
-omit [DecidableEq n] in
-lemma unitClose_reindex_iff {m : Type*} [Fintype m] (e : n ≃ m) {N : ℕ}
-    {a b : simplexGrid (n := n) N} :
-    UnitClose (n := m) ((reindex (n := n) e) a) ((reindex (n := n) e) b) ↔
-      UnitClose (n := n) a b := by
-  constructor
-  · intro h i
-    simpa using h (e i)
-  · intro h j
-    simpa using h (e.symm j)
+def isDominant  :=
+  ∀ y, ∃ i ∈ C, ∀ x ∈ sigma,  y ≤[i] x
 
-omit [DecidableEq n] in
-lemma unitClose_refl {N : ℕ} (a : simplexGrid (n := n) N) :
-    UnitClose (n := n) a a := by
-  intro j
-  simp
+variable {sigma C} in
+lemma Nonempty_of_Dominant (h : IST.isDominant sigma C) : C.Nonempty := by
+  obtain ⟨j,hj⟩ := h default
+  exact ⟨j, hj.1⟩
 
-omit [DecidableEq n] in
-lemma unitClose_symm {N : ℕ} {a b : simplexGrid (n := n) N}
-    (h : UnitClose (n := n) a b) :
-    UnitClose (n := n) b a := by
-  intro j
-  simpa [UnitClose, abs_sub_comm] using h j
 
-def FullyLabeledUnitCluster {N : ℕ} (c : simplexGrid (n := n) N → n)
-    (base : simplexGrid (n := n) N) : Prop :=
-  ∀ i : n, ∃ a : simplexGrid (n := n) N, c a = i ∧ UnitClose (n := n) a base
+omit [Inhabited T] in
+lemma Dominant_of_subset (sigma τ : Finset T) (C : Finset Idx) :
+  τ ⊆ sigma → isDominant sigma C  → isDominant τ C := by
+    intro h1 h2 y
+    obtain ⟨j,hj⟩:= h2 y
+    use j,hj.1
+    intro x hx
+    exact hj.2 x (h1 hx)
 
-noncomputable def reindexColor {m : Type*} [Fintype m] (e : n ≃ m) {N : ℕ}
-    (c : simplexGrid (n := n) N → n) :
-    simplexGrid (n := m) N → m :=
-  fun a => e (c ((reindex (n := n) e).symm a))
+omit [Inhabited T] in
+lemma Dominant_of_supset (sigma : Finset T) (C D: Finset Idx) :
+  C ⊆ D → isDominant sigma C  → isDominant sigma D := by
+    intro h1 h2 y
+    obtain ⟨j,hj⟩:= h2 y
+    use j,(h1 hj.1)
+    intro x hx
+    exact hj.2 x hx
 
-omit [DecidableEq n] in
-lemma fullyLabeledUnitCluster_of_reindexColor {m : Type*} [Fintype m] (e : n ≃ m)
-    {N : ℕ} (c : simplexGrid (n := n) N → n)
-    {base : simplexGrid (n := m) N}
-    (hfull :
-      FullyLabeledUnitCluster (n := m) (reindexColor (n := n) e c) base) :
-    FullyLabeledUnitCluster (n := n) c ((reindex (n := n) e).symm base) := by
-  intro i
-  obtain ⟨a, hcolor, hclose⟩ := hfull (e i)
-  refine ⟨(reindex (n := n) e).symm a, ?_, ?_⟩
-  · exact e.injective hcolor
-  · rw [← unitClose_reindex_iff (n := n) e]
-    simpa using hclose
+abbrev mini {sigma : Finset T} (h2 : sigma.Nonempty) (i : Idx) : T := @Finset.min' _ (IST i) _ h2
 
-omit [DecidableEq n] in
-lemma reindexColor_boundary {m : Type*} [Fintype m] (e : n ≃ m) {N : ℕ}
-    (c : simplexGrid (n := n) N → n)
-    (hc : ∀ (a : simplexGrid (n := n) N) (i : n), a.1 i = 0 → c a ≠ i) :
-    ∀ (a : simplexGrid (n := m) N) (j : m),
-      a.1 j = 0 → reindexColor (n := n) e c a ≠ j := by
-  intro a j hj hcolor
-  have hc_eq : c ((reindex (n := n) e).symm a) = e.symm j := by
-    exact e.injective (by simpa [reindexColor] using hcolor)
-  have hcoord :
-      ((reindex (n := n) e).symm a).1 (e.symm j) = 0 := by
-    simpa using hj
-  exact hc ((reindex (n := n) e).symm a) (e.symm j) hcoord hc_eq
-
-omit [DecidableEq n] in
-lemma exists_fullyLabeledUnitCluster_of_reindexColor_exists {m : Type*} [Fintype m]
-    (e : n ≃ m) {N : ℕ} (c : simplexGrid (n := n) N → n)
-    (h :
-      ∃ base : simplexGrid (n := m) N,
-        FullyLabeledUnitCluster (n := m) (reindexColor (n := n) e c) base) :
-    ∃ base : simplexGrid (n := n) N,
-      FullyLabeledUnitCluster (n := n) c base := by
-  obtain ⟨base, hbase⟩ := h
-  exact ⟨(reindex (n := n) e).symm base,
-    fullyLabeledUnitCluster_of_reindexColor e c hbase⟩
-
-omit [DecidableEq n] in
-lemma exists_fullyLabeledUnitCluster_of_fin_card_case [Nonempty n] {N : ℕ}
-    (c : simplexGrid (n := n) N → n)
-    (hc : ∀ (a : simplexGrid (n := n) N) (i : n), a.1 i = 0 → c a ≠ i)
-    (hfin :
-      ∀ cfin : simplexGrid (n := Fin (Fintype.card n)) N → Fin (Fintype.card n),
-        (∀ (a : simplexGrid (n := Fin (Fintype.card n)) N) (i : Fin (Fintype.card n)),
-          a.1 i = 0 → cfin a ≠ i) →
-          ∃ base : simplexGrid (n := Fin (Fintype.card n)) N,
-            FullyLabeledUnitCluster (n := Fin (Fintype.card n)) cfin base) :
-    ∃ base : simplexGrid (n := n) N,
-      FullyLabeledUnitCluster (n := n) c base := by
-  classical
-  let e : n ≃ Fin (Fintype.card n) := Fintype.equivFin n
-  exact exists_fullyLabeledUnitCluster_of_reindexColor_exists e c
-    (hfin (reindexColor (n := n) e c) (reindexColor_boundary e c hc))
-
-noncomputable def unitNeighborhood (N : ℕ) (base : simplexGrid (n := n) N) :
-    Finset (simplexGrid (n := n) N) :=
+omit [Inhabited T] in
+lemma keylemma_of_dominant {sigma : Finset T} {C: Finset Idx} (h1 : IST.isDominant sigma C) (h2: sigma.Nonempty): sigma  = C.image (mini h2)  :=
   by
-    classical
-    exact Finset.univ.filter fun a => UnitClose (n := n) a base
+    ext a
+    constructor
+    · intro ha
+      rw [mem_image]
+      by_contra  hm
+      push Not at hm
+      obtain ⟨i,hi1,hi2⟩ := h1 a
+      replace hm := hm i hi1
+      rw [mini] at hm
+      have ha1 := @Finset.le_min' _ (IST i) _ h2 a hi2
+      have ha2 := @Finset.min'_le _ (IST i) _ _ ha
+      apply hm
+      refine @eq_of_le_of_ge _ (IST i).toPartialOrder _ _ ha2 ha1
+    · suffices h: ∀ x ∈ C, mini h2 x = a → a ∈ sigma from
+      by simp;exact h
+      intro _ _ ha
+      simp [mini,<-ha,Finset.min'_mem]
 
-lemma mem_unitNeighborhood {N : ℕ} {base a : simplexGrid (n := n) N} :
-    a ∈ unitNeighborhood (n := n) N base ↔ UnitClose (n := n) a base := by
-  classical
-  simp [unitNeighborhood]
+omit [Inhabited T] in
+lemma card_le_of_domiant {sigma : Finset T} {C: Finset Idx} (h1 : IST.isDominant sigma C) : sigma.card  ≤  C.card  := by
+  by_cases h2 : sigma.Nonempty
+  · rw [keylemma_of_dominant h1 h2]
+    apply Finset.card_image_le
+  · rw [not_nonempty_iff_eq_empty] at h2
+    simp only [h2, card_empty, zero_le]
 
-lemma base_mem_unitNeighborhood {N : ℕ} (base : simplexGrid (n := n) N) :
-    base ∈ unitNeighborhood (n := n) N base := by
-  exact mem_unitNeighborhood.mpr (unitClose_refl base)
-
-lemma color_mem_unitNeighborhood_image {N : ℕ} (c : simplexGrid (n := n) N → n)
-    (base : simplexGrid (n := n) N) :
-    c base ∈ ((unitNeighborhood (n := n) N base).image c : Finset n) := by
-  classical
-  rw [Finset.mem_image]
-  exact ⟨base, base_mem_unitNeighborhood base, rfl⟩
-
-lemma fullyLabeledUnitCluster_iff_image_eq_univ {N : ℕ}
-    (c : simplexGrid (n := n) N → n) (base : simplexGrid (n := n) N) :
-    FullyLabeledUnitCluster (n := n) c base ↔
-      ((unitNeighborhood (n := n) N base).image c : Finset n) = Finset.univ := by
-  classical
+omit [Inhabited T] in
+lemma empty_Dominant (h : D.Nonempty) : IST.isDominant Finset.empty D := by
+  intro y
+  obtain ⟨j,hj⟩ := h
+  use j
   constructor
-  · intro h
-    apply Finset.ext
-    intro i
-    simp only [Finset.mem_image, Finset.mem_univ, iff_true]
-    obtain ⟨a, hcolor, hclose⟩ := h i
-    exact ⟨a, mem_unitNeighborhood.mpr hclose, hcolor⟩
-  · intro h i
-    have hi : i ∈ ((unitNeighborhood (n := n) N base).image c : Finset n) := by
-      rw [h]
-      exact Finset.mem_univ i
-    rw [Finset.mem_image] at hi
-    obtain ⟨a, ha, hcolor⟩ := hi
-    exact ⟨a, hcolor, mem_unitNeighborhood.mp ha⟩
-
-lemma not_fullyLabeledUnitCluster_iff_exists_missing {N : ℕ}
-    (c : simplexGrid (n := n) N → n) (base : simplexGrid (n := n) N) :
-    ¬ FullyLabeledUnitCluster (n := n) c base ↔
-      ∃ i : n, i ∉ ((unitNeighborhood (n := n) N base).image c : Finset n) := by
-  classical
-  rw [fullyLabeledUnitCluster_iff_image_eq_univ]
-  constructor
-  · intro h
-    by_contra hmissing
-    apply h
-    apply Finset.ext
-    intro i
-    simp only [Finset.mem_univ, iff_true]
-    exact by_contra fun hi => hmissing ⟨i, hi⟩
-  · rintro ⟨i, hi⟩ himage
-    rw [himage] at hi
-    exact hi (Finset.mem_univ i)
-
-noncomputable def missingLabelOfNotFull {N : ℕ}
-    (c : simplexGrid (n := n) N → n)
-    (hnot : ∀ base : simplexGrid (n := n) N,
-      ¬ FullyLabeledUnitCluster (n := n) c base)
-    (base : simplexGrid (n := n) N) : n :=
-  Classical.choose (not_fullyLabeledUnitCluster_iff_exists_missing c base |>.mp (hnot base))
-
-lemma missingLabelOfNotFull_spec {N : ℕ}
-    (c : simplexGrid (n := n) N → n)
-    (hnot : ∀ base : simplexGrid (n := n) N,
-      ¬ FullyLabeledUnitCluster (n := n) c base)
-    (base : simplexGrid (n := n) N) :
-    missingLabelOfNotFull (n := n) c hnot base ∉
-      ((unitNeighborhood (n := n) N base).image c : Finset n) :=
-  Classical.choose_spec
-    (not_fullyLabeledUnitCluster_iff_exists_missing c base |>.mp (hnot base))
-
-lemma missingLabelOfNotFull_ne_color_of_unitClose {N : ℕ}
-    (c : simplexGrid (n := n) N → n)
-    (hnot : ∀ base : simplexGrid (n := n) N,
-      ¬ FullyLabeledUnitCluster (n := n) c base)
-    {base a : simplexGrid (n := n) N} (ha : UnitClose (n := n) a base) :
-    missingLabelOfNotFull (n := n) c hnot base ≠ c a := by
-  intro h
-  have hmissing := missingLabelOfNotFull_spec (n := n) c hnot base
-  apply hmissing
-  rw [Finset.mem_image]
-  exact ⟨a, mem_unitNeighborhood.mpr ha, h.symm⟩
-
-lemma missingLabelOfNotFull_ne_color_self {N : ℕ}
-    (c : simplexGrid (n := n) N → n)
-    (hnot : ∀ base : simplexGrid (n := n) N,
-      ¬ FullyLabeledUnitCluster (n := n) c base)
-    (base : simplexGrid (n := n) N) :
-    missingLabelOfNotFull (n := n) c hnot base ≠ c base :=
-  missingLabelOfNotFull_ne_color_of_unitClose c hnot (unitClose_refl base)
-
-lemma missingLabelOfNotFull_ne_vertex_label {N : ℕ}
-    (c : simplexGrid (n := n) N → n)
-    (hc : ∀ (a : simplexGrid (n := n) N) (i : n), a.1 i = 0 → c a ≠ i)
-    (hnot : ∀ base : simplexGrid (n := n) N,
-      ¬ FullyLabeledUnitCluster (n := n) c base)
-    (i : n) :
-    missingLabelOfNotFull (n := n) c hnot (vertex (n := n) N i) ≠ i := by
-  intro hmi
-  have hself := missingLabelOfNotFull_ne_color_self c hnot (vertex (n := n) N i)
-  apply hself
-  rw [color_vertex_of_boundary c hc i, hmi]
-
-omit [DecidableEq n] in
-lemma color_coord_pos_of_boundary {N : ℕ}
-    (c : simplexGrid (n := n) N → n)
-    (hc : ∀ (a : simplexGrid (n := n) N) (i : n), a.1 i = 0 → c a ≠ i)
-    (a : simplexGrid (n := n) N) :
-    0 < a.1 (c a) := by
-  by_contra hnonpos
-  have hzero : a.1 (c a) = 0 := Nat.eq_zero_of_not_pos hnonpos
-  exact hc a (c a) hzero rfl
-
-def GridStep {N : ℕ} (a b : simplexGrid (n := n) N) : Prop :=
-  ∃ i j : n,
-    i ≠ j ∧ 0 < a.1 i ∧
-      b.1 i = a.1 i - 1 ∧
-      b.1 j = a.1 j + 1 ∧
-      ∀ k : n, k ≠ i → k ≠ j → b.1 k = a.1 k
-
-def transfer {N : ℕ} (a : simplexGrid (n := n) N) {i j : n}
-    (hij : i ≠ j) (hi : 0 < a.1 i) : simplexGrid (n := n) N := by
-  refine ⟨Function.update (Function.update a.1 i (a.1 i - 1)) j (a.1 j + 1), ?_⟩
-  let s : Finset n := Finset.univ.erase j
-  have hi_mem_s : i ∈ s := by
-    simp [s, hij]
-  have hsum_orig : ∑ k, a.1 k = N := a.2
-  have hsum_split :
-      ∑ k, a.1 k = ∑ k ∈ s.erase i, a.1 k + a.1 i + a.1 j := by
-    have hj_mem : j ∈ (Finset.univ : Finset n) := Finset.mem_univ j
-    rw [← Finset.sum_erase_add _ _ hj_mem]
-    rw [← Finset.sum_erase_add _ _ hi_mem_s]
-  have hsum_new :
-      ∑ k, Function.update (Function.update a.1 i (a.1 i - 1)) j (a.1 j + 1) k =
-        (a.1 j + 1) + ((a.1 i - 1) + ∑ k ∈ s.erase i, a.1 k) := by
-    have hj_mem : j ∈ (Finset.univ : Finset n) := Finset.mem_univ j
-    rw [show (∑ k, Function.update (Function.update a.1 i (a.1 i - 1)) j (a.1 j + 1) k) =
-        ∑ k ∈ (Finset.univ : Finset n),
-          Function.update (Function.update a.1 i (a.1 i - 1)) j (a.1 j + 1) k by simp]
-    rw [Finset.sum_update_of_mem hj_mem]
-    rw [show (Finset.univ \ {j} : Finset n) = s by
-      rw [Finset.sdiff_singleton_eq_erase]]
-    rw [Finset.sum_update_of_mem hi_mem_s]
-    rw [Finset.sdiff_singleton_eq_erase]
-  rw [hsum_new]
-  omega
-
-@[simp]
-lemma transfer_apply_sub {N : ℕ} (a : simplexGrid (n := n) N) {i j : n}
-    (hij : i ≠ j) (hi : 0 < a.1 i) :
-    (transfer (n := n) a hij hi).1 i = a.1 i - 1 := by
-  simp [transfer, hij]
-
-@[simp]
-lemma transfer_apply_add {N : ℕ} (a : simplexGrid (n := n) N) {i j : n}
-    (hij : i ≠ j) (hi : 0 < a.1 i) :
-    (transfer (n := n) a hij hi).1 j = a.1 j + 1 := by
-  simp [transfer]
-
-@[simp]
-lemma transfer_apply_of_ne {N : ℕ} (a : simplexGrid (n := n) N) {i j k : n}
-    (hij : i ≠ j) (hi : 0 < a.1 i) (hki : k ≠ i) (hkj : k ≠ j) :
-    (transfer (n := n) a hij hi).1 k = a.1 k := by
-  simp [transfer, hki, hkj]
-
-lemma gridStep_transfer {N : ℕ} (a : simplexGrid (n := n) N) {i j : n}
-    (hij : i ≠ j) (hi : 0 < a.1 i) :
-    GridStep (n := n) a (transfer (n := n) a hij hi) := by
-  refine ⟨i, j, hij, hi, ?_, ?_, ?_⟩
-  · simp
-  · simp
-  · intro k hki hkj
-    simp [hki, hkj]
-
-lemma eq_transfer_of_gridStep {N : ℕ} {a b : simplexGrid (n := n) N}
-    {i j : n} (hij : i ≠ j) (hi : 0 < a.1 i)
-    (hbi : b.1 i = a.1 i - 1)
-    (hbj : b.1 j = a.1 j + 1)
-    (hrest : ∀ k : n, k ≠ i → k ≠ j → b.1 k = a.1 k) :
-    b = transfer (n := n) a hij hi := by
-  apply Subtype.ext
-  funext k
-  by_cases hki : k = i
-  · subst k
-    rw [hbi]
-    simp
-  · by_cases hkj : k = j
-    · subst k
-      rw [hbj]
-      simp
-    · rw [hrest k hki hkj]
-      simp [hki, hkj]
-
-omit [DecidableEq n] in
-lemma gridStep_symm {N : ℕ} {a b : simplexGrid (n := n) N}
-    (h : GridStep (n := n) a b) :
-    GridStep (n := n) b a := by
-  obtain ⟨i, j, hij, hi_pos, hbi, hbj, hrest⟩ := h
-  refine ⟨j, i, Ne.symm hij, ?_, ?_, ?_, ?_⟩
-  · rw [hbj]
-    omega
-  · rw [hbj]
-    omega
-  · rw [hbi]
-    omega
-  · intro k hkj hki
-    exact (hrest k hki hkj).symm
-
-omit [DecidableEq n] in
-lemma gridStep_ne {N : ℕ} {a b : simplexGrid (n := n) N}
-    (h : GridStep (n := n) a b) :
-    a ≠ b := by
-  obtain ⟨i, _j, _hij, hi_pos, hbi, _hbj, _hrest⟩ := h
-  intro hab
-  have hcoord : b.1 i = a.1 i := by rw [hab]
-  omega
-
-def GridAdj {N : ℕ} (a b : simplexGrid (n := n) N) : Prop :=
-  GridStep (n := n) a b ∨ GridStep (n := n) b a
-
-omit [DecidableEq n] in
-lemma gridAdj_symm {N : ℕ} {a b : simplexGrid (n := n) N}
-    (h : GridAdj (n := n) a b) :
-    GridAdj (n := n) b a := by
-  exact h.symm
-
-omit [DecidableEq n] in
-lemma gridAdj_of_gridStep {N : ℕ} {a b : simplexGrid (n := n) N}
-    (h : GridStep (n := n) a b) :
-    GridAdj (n := n) a b :=
-  Or.inl h
-
-omit [DecidableEq n] in
-lemma gridAdj_iff_gridStep {N : ℕ} {a b : simplexGrid (n := n) N} :
-    GridAdj (n := n) a b ↔ GridStep (n := n) a b := by
-  constructor
-  · rintro (h | h)
-    · exact h
-    · exact gridStep_symm h
-  · exact Or.inl
-
-noncomputable def gridNeighbors (N : ℕ) (a : simplexGrid (n := n) N) :
-    Finset (simplexGrid (n := n) N) :=
-  by
-    classical
-    exact Finset.univ.filter fun b => GridAdj (n := n) a b
-
-lemma mem_gridNeighbors {N : ℕ} {a b : simplexGrid (n := n) N} :
-    b ∈ gridNeighbors (n := n) N a ↔ GridAdj (n := n) a b := by
-  classical
-  simp [gridNeighbors]
-
-lemma mem_gridNeighbors_iff_gridStep {N : ℕ} {a b : simplexGrid (n := n) N} :
-    b ∈ gridNeighbors (n := n) N a ↔ GridStep (n := n) a b := by
-  rw [mem_gridNeighbors, gridAdj_iff_gridStep]
-
-lemma gridNeighbors_symm {N : ℕ} {a b : simplexGrid (n := n) N}
-    (h : b ∈ gridNeighbors (n := n) N a) :
-    a ∈ gridNeighbors (n := n) N b := by
-  exact mem_gridNeighbors.mpr (gridAdj_symm (mem_gridNeighbors.mp h))
-
-omit [DecidableEq n] in
-lemma unitClose_of_gridStep {N : ℕ} {a b : simplexGrid (n := n) N}
-    (h : GridStep (n := n) a b) :
-    UnitClose (n := n) a b := by
-  rintro k
-  obtain ⟨i, j, hij, hi_pos, hbi, hbj, hrest⟩ := h
-  by_cases hki : k = i
-  · subst k
-    have hcast : ((a.1 i - 1 : ℕ) : ℝ) = (a.1 i : ℝ) - 1 := by
-      rw [Nat.cast_sub (Nat.succ_le_of_lt hi_pos)]
-      norm_num
-    rw [hbi, hcast]
-    simp
-  · by_cases hkj : k = j
-    · subst k
-      rw [hbj]
-      norm_num
-    · rw [hrest k hki hkj]
-      simp
-
-omit [DecidableEq n] in
-lemma unitClose_of_gridStep_symm {N : ℕ} {a b : simplexGrid (n := n) N}
-    (h : GridStep (n := n) a b) :
-    UnitClose (n := n) b a :=
-  unitClose_symm (unitClose_of_gridStep h)
-
-lemma missingLabelOfNotFull_ne_color_of_gridStep {N : ℕ}
-    (c : simplexGrid (n := n) N → n)
-    (hnot : ∀ base : simplexGrid (n := n) N,
-      ¬ FullyLabeledUnitCluster (n := n) c base)
-    {a b : simplexGrid (n := n) N} (hab : GridStep (n := n) a b) :
-    missingLabelOfNotFull (n := n) c hnot a ≠ c b :=
-  missingLabelOfNotFull_ne_color_of_unitClose c hnot (unitClose_of_gridStep_symm hab)
-
-lemma missingLabelOfNotFull_ne_color_of_gridStep_symm {N : ℕ}
-    (c : simplexGrid (n := n) N → n)
-    (hnot : ∀ base : simplexGrid (n := n) N,
-      ¬ FullyLabeledUnitCluster (n := n) c base)
-    {a b : simplexGrid (n := n) N} (hab : GridStep (n := n) a b) :
-    missingLabelOfNotFull (n := n) c hnot b ≠ c a :=
-  missingLabelOfNotFull_ne_color_of_unitClose c hnot (unitClose_of_gridStep hab)
-
-lemma exists_full_cell_of_odd_door_graph {Cell : Type*} [Fintype Cell]
-    (G : SimpleGraph (Option Cell)) [DecidableRel G.Adj]
-    (CellFull : Cell → Prop)
-    (hout : Odd (G.degree none))
-    (hodd_full : ∀ cell : Cell, Odd (G.degree (some cell)) → CellFull cell) :
-    ∃ cell : Cell, CellFull cell := by
-  classical
-  obtain ⟨v, hvne, hvodd⟩ :=
-    G.exists_ne_odd_degree_of_exists_odd_degree none hout
-  cases v with
-  | none => exact False.elim (hvne rfl)
-  | some cell => exact ⟨cell, hodd_full cell hvodd⟩
-
-/-- A finite grid cell whose vertices all lie in one unit neighborhood. -/
-structure UnitCell (N : ℕ) where
-  verts : Finset (simplexGrid (n := n) N)
-  base : simplexGrid (n := n) N
-  close : ∀ a ∈ verts, UnitClose (n := n) a base
-
-namespace UnitCell
-
-noncomputable instance instFintype (N : ℕ) : Fintype (UnitCell (n := n) N) := by
-  classical
-  refine Fintype.ofEquiv
-    {p : Finset (simplexGrid (n := n) N) × simplexGrid (n := n) N //
-      ∀ a ∈ p.1, UnitClose (n := n) a p.2} ?_
-  refine
-    { toFun := fun p => ⟨p.1.1, p.1.2, p.2⟩
-      invFun := fun cell => ⟨(cell.verts, cell.base), cell.close⟩
-      left_inv := ?_
-      right_inv := ?_ }
-  · intro p
-    cases p with
-    | mk val h =>
-        cases val
-        rfl
-  · intro cell
-    cases cell
-    rfl
-
-def colors {N : ℕ} (cell : UnitCell (n := n) N)
-    (c : simplexGrid (n := n) N → n) : Finset n :=
-  cell.verts.image c
-
-def Full {N : ℕ} (cell : UnitCell (n := n) N)
-    (c : simplexGrid (n := n) N → n) : Prop :=
-  cell.colors c = Finset.univ
-
-lemma fullyLabeledUnitCluster_of_full {N : ℕ}
-    (cell : UnitCell (n := n) N) (c : simplexGrid (n := n) N → n)
-    (hfull : cell.Full c) :
-    FullyLabeledUnitCluster (n := n) c cell.base := by
-  classical
-  intro i
-  have hi : i ∈ cell.colors c := by
-    rw [hfull]
-    exact Finset.mem_univ i
-  rw [colors, Finset.mem_image] at hi
-  obtain ⟨a, ha_mem, ha_color⟩ := hi
-  exact ⟨a, ha_color, cell.close a ha_mem⟩
-
-lemma exists_fullyLabeledUnitCluster_of_odd_door_graph {N : ℕ}
-    (G : SimpleGraph (Option (UnitCell (n := n) N))) [DecidableRel G.Adj]
-    (c : simplexGrid (n := n) N → n)
-    (hout : Odd (G.degree none))
-    (hodd_full :
-      ∀ cell : UnitCell (n := n) N, Odd (G.degree (some cell)) → cell.Full c) :
-    ∃ base : simplexGrid (n := n) N,
-      FullyLabeledUnitCluster (n := n) c base := by
-  obtain ⟨cell, hfull⟩ :=
-    exists_full_cell_of_odd_door_graph G (fun cell : UnitCell (n := n) N => cell.Full c)
-      hout hodd_full
-  exact ⟨cell.base, cell.fullyLabeledUnitCluster_of_full c hfull⟩
-
-end UnitCell
-
-/--
-A top-dimensional finite grid cell, represented only by the facts needed for the Sperner door
-count: it has exactly one vertex per label in a full labeling, and all vertices lie in one unit
-neighborhood.
--/
-structure TopCell (N : ℕ) extends UnitCell (n := n) N where
-  card_verts : verts.card = Fintype.card n
-
-namespace TopCell
-
-noncomputable instance instFintype (N : ℕ) : Fintype (TopCell (n := n) N) := by
-  classical
-  refine Fintype.ofEquiv
-    {cell : UnitCell (n := n) N // cell.verts.card = Fintype.card n} ?_
-  refine
-    { toFun := fun cell => { toUnitCell := cell.1, card_verts := cell.2 }
-      invFun := fun cell => ⟨cell.toUnitCell, cell.card_verts⟩
-      left_inv := ?_
-      right_inv := ?_ }
-  · intro cell
-    cases cell with
-    | mk val h =>
-        cases val
-        rfl
-  · intro cell
-    cases cell
-    rfl
-
-def colors {N : ℕ} (cell : TopCell (n := n) N)
-    (c : simplexGrid (n := n) N → n) : Finset n :=
-  cell.verts.image c
-
-def Full {N : ℕ} (cell : TopCell (n := n) N)
-    (c : simplexGrid (n := n) N → n) : Prop :=
-  cell.colors c = Finset.univ
-
-def faceDoors {N : ℕ} (cell : TopCell (n := n) N)
-    (c : simplexGrid (n := n) N → n) (r : n) :
-    Finset (Finset (simplexGrid (n := n) N)) :=
-  cell.verts.powerset.filter fun face =>
-    face.card + 1 = cell.verts.card ∧ face.image c = Finset.univ.erase r
-
-def facets {N : ℕ} (cell : TopCell (n := n) N) :
-    Finset (Finset (simplexGrid (n := n) N)) :=
-  cell.verts.powerset.filter fun face => face.card + 1 = cell.verts.card
-
-omit [DecidableEq n] in
-lemma mem_facets {N : ℕ} {cell : TopCell (n := n) N}
-    {face : Finset (simplexGrid (n := n) N)} :
-    face ∈ cell.facets ↔ face ⊆ cell.verts ∧ face.card + 1 = cell.verts.card := by
-  classical
-  simp [facets]
-
-lemma faceDoors_subset_facets {N : ℕ} (cell : TopCell (n := n) N)
-    (c : simplexGrid (n := n) N → n) (r : n) :
-    cell.faceDoors c r ⊆ cell.facets := by
-  classical
-  intro face hface
-  rw [faceDoors, Finset.mem_filter] at hface
-  rw [mem_facets]
-  exact ⟨Finset.mem_powerset.mp hface.1, hface.2.1⟩
-
-omit [DecidableEq n] in
-lemma exists_erase_eq_of_mem_facets {N : ℕ} [DecidableEq (simplexGrid (n := n) N)]
-    {cell : TopCell (n := n) N}
-    {face : Finset (simplexGrid (n := n) N)}
-    (hface : face ∈ cell.facets) :
-    ∃ a ∈ cell.verts, a ∉ face ∧ face = cell.verts.erase a := by
-  classical
-  rw [mem_facets] at hface
-  have hsub : face ⊆ cell.verts := hface.1
-  have hcard : face.card + 1 = cell.verts.card := hface.2
-  have hlt : face.card < cell.verts.card := by omega
-  obtain ⟨a, ha_cell, ha_not_face⟩ :=
-    Finset.exists_mem_notMem_of_card_lt_card hlt
-  refine ⟨a, ha_cell, ha_not_face, ?_⟩
-  apply Finset.eq_of_subset_of_card_le
+  · exact hj
   · intro x hx
-    rw [Finset.mem_erase]
-    exact ⟨fun hxa => ha_not_face (hxa ▸ hx), hsub hx⟩
-  · rw [Finset.card_erase_of_mem ha_cell]
-    omega
+    contradiction
 
-omit [DecidableEq n] in
-lemma mem_facets_iff_exists_erase {N : ℕ} [DecidableEq (simplexGrid (n := n) N)]
-    {cell : TopCell (n := n) N}
-    {face : Finset (simplexGrid (n := n) N)} :
-    face ∈ cell.facets ↔ ∃ a ∈ cell.verts, face = cell.verts.erase a := by
-  classical
-  constructor
-  · intro hface
-    obtain ⟨a, ha_cell, _ha_not_face, hface_eq⟩ := exists_erase_eq_of_mem_facets hface
-    exact ⟨a, ha_cell, hface_eq⟩
-  · rintro ⟨a, ha_cell, rfl⟩
-    rw [mem_facets]
-    exact ⟨Finset.erase_subset a cell.verts, Finset.card_erase_add_one ha_cell⟩
+abbrev isCell  := isDominant sigma C
 
-def oppositeFace {N : ℕ} (cell : TopCell (n := n) N)
-    (c : simplexGrid (n := n) N → n) (r : n) :
-    Finset (simplexGrid (n := n) N) :=
-  cell.verts.filter fun a => c a ≠ r
+abbrev isRoom :=  isCell sigma C ∧ C.card = sigma.card
 
-lemma mem_oppositeFace {N : ℕ} {cell : TopCell (n := n) N}
-    {c : simplexGrid (n := n) N → n} {r : n} {a : simplexGrid (n := n) N} :
-    a ∈ cell.oppositeFace c r ↔ a ∈ cell.verts ∧ c a ≠ r := by
-  classical
-  simp [oppositeFace]
+lemma sigma_nonempty_of_room {sigma : Finset T} {C : Finset Idx} (h : isRoom sigma C) : sigma.Nonempty  := by
+  have hC : C.Nonempty := Nonempty_of_Dominant h.1
+  have hCpos : 0 < C.card := Finset.card_pos.2 hC
+  have h_card : sigma.card = C.card := h.2.symm
+  have hpos : 0 < sigma.card := by rwa [h_card]
+  exact Finset.card_pos.1 hpos
 
-lemma oppositeFace_colors_of_full {N : ℕ} {cell : TopCell (n := n) N}
-    {c : simplexGrid (n := n) N → n} {r : n}
-    (hfull : cell.Full c) :
-    (cell.oppositeFace c r).image c = Finset.univ.erase r := by
-  classical
-  apply Finset.ext
-  intro i
-  constructor
-  · intro hi
-    rw [Finset.mem_image] at hi
-    obtain ⟨a, ha, hcolor⟩ := hi
-    rw [mem_oppositeFace] at ha
-    rw [Finset.mem_erase]
-    exact ⟨by simpa [hcolor] using ha.2, Finset.mem_univ i⟩
-  · intro hi
-    rw [Finset.mem_erase] at hi
-    have hi_colors : i ∈ cell.colors c := by
-      rw [hfull]
-      exact Finset.mem_univ i
-    rw [colors, Finset.mem_image] at hi_colors
-    obtain ⟨a, ha_mem, ha_color⟩ := hi_colors
-    rw [Finset.mem_image]
-    refine ⟨a, ?_, ha_color⟩
-    rw [mem_oppositeFace]
-    exact ⟨ha_mem, by
-      intro hcr
-      exact hi.1 (ha_color ▸ hcr)⟩
+abbrev isDoor  :=  isCell sigma C ∧ C.card = sigma.card + 1
 
-lemma color_injOn_verts_of_full {N : ℕ} {cell : TopCell (n := n) N}
-    {c : simplexGrid (n := n) N → n}
-    (hfull : cell.Full c) :
-    Set.InjOn c cell.verts := by
-  classical
-  rw [← Finset.card_image_iff]
-  have hcard_image :
-      (cell.verts.image c).card = (Finset.univ : Finset n).card := by
-    simpa [Full, colors] using congrArg Finset.card hfull
-  simpa [cell.card_verts] using hcard_image
 
-lemma oppositeFace_card_add_one_of_full {N : ℕ} {cell : TopCell (n := n) N}
-    {c : simplexGrid (n := n) N → n} {r : n}
-    (hfull : cell.Full c) :
-    (cell.oppositeFace c r).card + 1 = cell.verts.card := by
-  classical
-  have hinj : Set.InjOn c cell.verts := color_injOn_verts_of_full hfull
-  have hr_colors : r ∈ cell.colors c := by
-    rw [hfull]
-    exact Finset.mem_univ r
-  rw [colors, Finset.mem_image] at hr_colors
-  obtain ⟨a, ha_mem, ha_color⟩ := hr_colors
-  have hface_eq : cell.oppositeFace c r = cell.verts.erase a := by
-    apply Finset.ext
-    intro x
-    rw [mem_oppositeFace, Finset.mem_erase]
+variable [DecidableEq T] [DecidableEq Idx]
+
+inductive isDoorof (τ : Finset T) (D : Finset Idx) (sigma : Finset T) (C : Finset Idx) : Prop
+  | idoor (h0 : isCell sigma C) (h1 : isDoor τ D) (x :T) (h1 : x ∉ τ) (h2 : insert x τ = sigma) (h3 : D = C)
+  | odoor (h0 : isCell sigma C) (h1 : isDoor τ D) (j :Idx) (h1 : j ∉ C) (h2 : τ = sigma) (h3 : D = insert j C)
+
+omit [Inhabited T] in
+lemma isCell_of_door (h1 : isDoorof τ D sigma C) : IST.isCell τ D := by
+  cases h1
+  · rename_i h0 _ j h1 h3 h4
+    rw [h4]
+    exact IST.Dominant_of_subset _ _ C (by simp [<-h3]) h0
+  · rename_i h0 _ j h1 h2' h3
+    rw [h2', h3]
+    exact IST.Dominant_of_supset _ _ _ (Finset.subset_insert j C) h0
+
+variable {sigma C} in
+omit [Inhabited T] in
+lemma isRoom_of_Door (h1 : isDoorof τ D sigma C) : IST.isRoom sigma C := by
+  cases h1
+  · rename_i h0 h2 x h3 h4 h5
     constructor
-    · intro hx
-      exact ⟨by
-        intro hxa
-        exact hx.2 (hxa ▸ ha_color), hx.1⟩
-    · intro hx
-      refine ⟨hx.2, ?_⟩
-      intro hcolor
-      exact hx.1 (hinj hx.2 ha_mem (hcolor.trans ha_color.symm))
-  rw [hface_eq, Finset.card_erase_of_mem ha_mem]
-  have hpos : 0 < cell.verts.card := by
-    rw [cell.card_verts]
-    exact Fintype.card_pos_iff.mpr ⟨r⟩
-  omega
-
-lemma oppositeFace_mem_faceDoors_of_full {N : ℕ} {cell : TopCell (n := n) N}
-    {c : simplexGrid (n := n) N → n} {r : n}
-    (hfull : cell.Full c) :
-    cell.oppositeFace c r ∈ cell.faceDoors c r := by
-  classical
-  rw [faceDoors, Finset.mem_filter]
-  refine ⟨Finset.mem_powerset.mpr ?_, ?_, oppositeFace_colors_of_full hfull⟩
-  · intro a ha
-    exact (mem_oppositeFace.mp ha).1
-  · exact oppositeFace_card_add_one_of_full hfull
-
-lemma eq_oppositeFace_of_mem_faceDoors_of_full {N : ℕ} {cell : TopCell (n := n) N}
-    {c : simplexGrid (n := n) N → n} {r : n}
-    (hfull : cell.Full c) {face : Finset (simplexGrid (n := n) N)}
-    (hface : face ∈ cell.faceDoors c r) :
-    face = cell.oppositeFace c r := by
-  classical
-  have hinj : Set.InjOn c cell.verts := color_injOn_verts_of_full hfull
-  have hface_sub : face ⊆ cell.verts := by
-    rw [faceDoors, Finset.mem_filter] at hface
-    exact Finset.mem_powerset.mp hface.1
-  have hface_colors : face.image c = Finset.univ.erase r := by
-    rw [faceDoors, Finset.mem_filter] at hface
-    exact hface.2.2
-  apply Finset.ext
-  intro a
-  constructor
-  · intro ha
-    rw [mem_oppositeFace]
-    refine ⟨hface_sub ha, ?_⟩
-    intro hcolor
-    have hc_mem : c a ∈ face.image c := Finset.mem_image.mpr ⟨a, ha, rfl⟩
-    rw [hface_colors, Finset.mem_erase] at hc_mem
-    exact hc_mem.1 hcolor
-  · intro ha
-    rw [mem_oppositeFace] at ha
-    have hc_mem : c a ∈ Finset.univ.erase r := by
-      rw [Finset.mem_erase]
-      exact ⟨ha.2, Finset.mem_univ (c a)⟩
-    rw [← hface_colors, Finset.mem_image] at hc_mem
-    obtain ⟨b, hb_mem, hb_color⟩ := hc_mem
-    have hb_cell : b ∈ cell.verts := hface_sub hb_mem
-    have hba : b = a := hinj hb_cell ha.1 hb_color
-    simpa [hba] using hb_mem
-
-lemma faceDoors_eq_singleton_oppositeFace_of_full {N : ℕ}
-    {cell : TopCell (n := n) N}
-    {c : simplexGrid (n := n) N → n} {r : n}
-    (hfull : cell.Full c) :
-    cell.faceDoors c r = {cell.oppositeFace c r} := by
-  classical
-  apply Finset.ext
-  intro face
-  constructor
-  · intro hface
-    rw [Finset.mem_singleton]
-    exact eq_oppositeFace_of_mem_faceDoors_of_full hfull hface
-  · intro hface
-    rw [Finset.mem_singleton] at hface
-    rw [hface]
-    exact oppositeFace_mem_faceDoors_of_full hfull
-
-lemma odd_card_faceDoors_of_full {N : ℕ} {cell : TopCell (n := n) N}
-    {c : simplexGrid (n := n) N → n} {r : n}
-    (hfull : cell.Full c) :
-    Odd (cell.faceDoors c r).card := by
-  rw [faceDoors_eq_singleton_oppositeFace_of_full hfull]
-  norm_num
-
-lemma face_mem_of_mem_faceDoors {N : ℕ} {cell : TopCell (n := n) N}
-    {c : simplexGrid (n := n) N → n} {r : n}
-    {face : Finset (simplexGrid (n := n) N)}
-    (hface : face ∈ cell.faceDoors c r) :
-    face ⊆ cell.verts := by
-  classical
-  rw [faceDoors, Finset.mem_filter] at hface
-  exact Finset.mem_powerset.mp hface.1
-
-lemma face_card_add_one_of_mem_faceDoors {N : ℕ} {cell : TopCell (n := n) N}
-    {c : simplexGrid (n := n) N → n} {r : n}
-    {face : Finset (simplexGrid (n := n) N)}
-    (hface : face ∈ cell.faceDoors c r) :
-    face.card + 1 = cell.verts.card := by
-  classical
-  rw [faceDoors, Finset.mem_filter] at hface
-  exact hface.2.1
-
-lemma face_colors_of_mem_faceDoors {N : ℕ} {cell : TopCell (n := n) N}
-    {c : simplexGrid (n := n) N → n} {r : n}
-    {face : Finset (simplexGrid (n := n) N)}
-    (hface : face ∈ cell.faceDoors c r) :
-    face.image c = Finset.univ.erase r := by
-  classical
-  rw [faceDoors, Finset.mem_filter] at hface
-  exact hface.2.2
-
-lemma color_injOn_face_of_mem_faceDoors {N : ℕ} {cell : TopCell (n := n) N}
-    {c : simplexGrid (n := n) N → n} {r : n}
-    {face : Finset (simplexGrid (n := n) N)}
-    (hface : face ∈ cell.faceDoors c r) :
-    Set.InjOn c face := by
-  classical
-  rw [← Finset.card_image_iff]
-  have hface_card : face.card + 1 = Fintype.card n := by
-    rw [face_card_add_one_of_mem_faceDoors hface, cell.card_verts]
-  have himage_card : (face.image c).card + 1 = Fintype.card n := by
-    rw [face_colors_of_mem_faceDoors hface]
-    exact Finset.card_erase_add_one (Finset.mem_univ r)
-  omega
-
-lemma exists_erase_eq_of_mem_faceDoors {N : ℕ} [DecidableEq (simplexGrid (n := n) N)]
-    {cell : TopCell (n := n) N}
-    {c : simplexGrid (n := n) N → n} {r : n}
-    {face : Finset (simplexGrid (n := n) N)}
-    (hface : face ∈ cell.faceDoors c r) :
-    ∃ a ∈ cell.verts, a ∉ face ∧ face = cell.verts.erase a := by
-  classical
-  have hsub : face ⊆ cell.verts := face_mem_of_mem_faceDoors hface
-  have hcard : face.card + 1 = cell.verts.card := face_card_add_one_of_mem_faceDoors hface
-  have hlt : face.card < cell.verts.card := by omega
-  obtain ⟨a, ha_cell, ha_not_face⟩ :=
-    Finset.exists_mem_notMem_of_card_lt_card hlt
-  refine ⟨a, ha_cell, ha_not_face, ?_⟩
-  apply Finset.eq_of_subset_of_card_le
-  · intro x hx
-    rw [Finset.mem_erase]
-    exact ⟨fun hxa => ha_not_face (hxa ▸ hx), hsub hx⟩
-  · rw [Finset.card_erase_of_mem ha_cell]
-    omega
-
-lemma mem_faceDoors_iff_exists_erase {N : ℕ} [DecidableEq (simplexGrid (n := n) N)]
-    {cell : TopCell (n := n) N}
-    {c : simplexGrid (n := n) N → n} {r : n}
-    {face : Finset (simplexGrid (n := n) N)} :
-    face ∈ cell.faceDoors c r ↔
-      ∃ a ∈ cell.verts,
-        face = cell.verts.erase a ∧ (cell.verts.erase a).image c = Finset.univ.erase r := by
-  classical
-  constructor
-  · intro hface
-    obtain ⟨a, ha_cell, _ha_not_face, hface_eq⟩ := exists_erase_eq_of_mem_faceDoors hface
-    exact ⟨a, ha_cell, hface_eq, by
-      rw [← hface_eq]
-      exact face_colors_of_mem_faceDoors hface⟩
-  · rintro ⟨a, ha_cell, hface_eq, hcolors⟩
-    rw [faceDoors, Finset.mem_filter]
-    refine ⟨Finset.mem_powerset.mpr ?_, ?_, ?_⟩
-    · rw [hface_eq]
-      exact Finset.erase_subset a cell.verts
-    · rw [hface_eq, Finset.card_erase_of_mem ha_cell]
-      have hpos : 0 < cell.verts.card := by
-        exact Finset.card_pos.mpr ⟨a, ha_cell⟩
-      omega
-    · rw [hface_eq]
-      exact hcolors
-
-lemma image_erase_eq_colors_iff_exists_same_color_ne {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {cell : TopCell (n := n) N}
-    {c : simplexGrid (n := n) N → n}
-    {a : simplexGrid (n := n) N} (ha : a ∈ cell.verts) :
-    (cell.verts.erase a).image c = cell.colors c ↔
-      ∃ b ∈ cell.verts, b ≠ a ∧ c b = c a := by
-  classical
-  constructor
-  · intro himage
-    have hca : c a ∈ (cell.verts.erase a).image c := by
-      rw [himage, colors, Finset.mem_image]
-      exact ⟨a, ha, rfl⟩
-    rw [Finset.mem_image] at hca
-    obtain ⟨b, hb_erase, hb_color⟩ := hca
-    rw [Finset.mem_erase] at hb_erase
-    exact ⟨b, hb_erase.2, hb_erase.1, hb_color⟩
-  · rintro ⟨b, hb_cell, hba, hb_color⟩
-    apply Finset.ext
-    intro i
+    · exact h0
+    · simp only [<-h5, h2.2, <-h4, h3, not_false_eq_true, Finset.card_insert_of_notMem]
+  · rename_i h0 h2 x h3 h4 h5
     constructor
-    · intro hi
-      rw [Finset.mem_image] at hi
-      obtain ⟨x, hx_erase, hx_color⟩ := hi
-      rw [Finset.mem_erase] at hx_erase
-      rw [colors, Finset.mem_image]
-      exact ⟨x, hx_erase.2, hx_color⟩
-    · intro hi
-      rw [colors, Finset.mem_image] at hi
-      obtain ⟨x, hx_cell, hx_color⟩ := hi
-      rw [Finset.mem_image]
-      by_cases hxa : x = a
-      · refine ⟨b, ?_, ?_⟩
-        · rw [Finset.mem_erase]
-          exact ⟨hba, hb_cell⟩
-        · rw [← hx_color, hxa]
-          exact hb_color
-      · refine ⟨x, ?_, hx_color⟩
-        rw [Finset.mem_erase]
-        exact ⟨hxa, hx_cell⟩
+    · exact h0
+    · have h6 := Finset.card_insert_of_notMem h3
+      subst h4
+      replace h5 : D.card = (insert x C).card := by rw [h5]
+      rw [h6] at h5
+      rw [h2.2] at h5
+      exact Eq.symm $ (add_left_inj _).1 h5
 
-lemma erase_subset_colors_of_mem_faceDoors {N : ℕ} {cell : TopCell (n := n) N}
-    {c : simplexGrid (n := n) N → n} {r : n}
-    {face : Finset (simplexGrid (n := n) N)}
-    (hface : face ∈ cell.faceDoors c r) :
-    Finset.univ.erase r ⊆ cell.colors c := by
-  classical
-  intro i hi
-  have hi_face : i ∈ face.image c := by
-    rw [face_colors_of_mem_faceDoors hface]
-    exact hi
-  rw [Finset.mem_image] at hi_face
-  obtain ⟨a, ha_face, ha_color⟩ := hi_face
-  rw [colors, Finset.mem_image]
-  exact ⟨a, face_mem_of_mem_faceDoors hface ha_face, ha_color⟩
+omit [Inhabited T] in
+lemma room_is_not_door (h1 : IST.isRoom sigma C) : ∀ τ D,  ¬ (isDoorof sigma C τ D) := by
+  intro τ D hd
+  unfold isRoom at h1
+  cases hd with
+  | idoor h0 hd  x h2 h3 h4 =>
+    unfold isDoor at hd
+    obtain ⟨_,hd⟩ := hd
+    have cond : #sigma = #sigma +1 := by rw [h1.2] at hd; assumption
+    simp at cond
+  | odoor h0 hd j h2 h3 h4 =>
+    unfold isDoor at hd
+    obtain ⟨_,hd⟩ := hd
+    have cond : #sigma = #sigma +1 := by rw [h1.2] at hd; assumption
+    simp at cond
 
-lemma colors_eq_univ_of_mem_color_r_of_mem_faceDoors {N : ℕ}
-    {cell : TopCell (n := n) N}
-    {c : simplexGrid (n := n) N → n} {r : n}
-    {face : Finset (simplexGrid (n := n) N)}
-    (hface : face ∈ cell.faceDoors c r)
-    (hr : r ∈ cell.colors c) :
-    cell.Full c := by
-  classical
-  apply Finset.ext
-  intro i
+variable (τ D) in
+abbrev isOutsideDoor := IST.isDoor τ D ∧ τ = Finset.empty
+
+variable (τ D) in
+abbrev isInternalDoor := IST.isDoor τ D ∧ τ.Nonempty
+
+
+omit [Inhabited T] [DecidableEq T] [DecidableEq Idx] in
+lemma outsidedoor_singleton (i : Idx) : IST.isOutsideDoor Finset.empty {i} := by
   constructor
-  · intro _hi
-    exact Finset.mem_univ i
-  · intro _hi
-    by_cases hir : i = r
-    · simpa [hir] using hr
-    · exact erase_subset_colors_of_mem_faceDoors hface (by
-        rw [Finset.mem_erase]
-        exact ⟨hir, Finset.mem_univ i⟩)
-
-lemma color_r_notMem_of_not_full_of_mem_faceDoors {N : ℕ}
-    {cell : TopCell (n := n) N}
-    {c : simplexGrid (n := n) N → n} {r : n}
-    {face : Finset (simplexGrid (n := n) N)}
-    (hnotfull : ¬ cell.Full c)
-    (hface : face ∈ cell.faceDoors c r) :
-    r ∉ cell.colors c := by
-  intro hr
-  exact hnotfull (colors_eq_univ_of_mem_color_r_of_mem_faceDoors hface hr)
-
-lemma colors_eq_erase_of_not_full_of_mem_faceDoors {N : ℕ}
-    {cell : TopCell (n := n) N}
-    {c : simplexGrid (n := n) N → n} {r : n}
-    {face : Finset (simplexGrid (n := n) N)}
-    (hnotfull : ¬ cell.Full c)
-    (hface : face ∈ cell.faceDoors c r) :
-    cell.colors c = Finset.univ.erase r := by
-  classical
-  apply Finset.ext
-  intro i
-  constructor
-  · intro hi
-    rw [Finset.mem_erase]
-    refine ⟨?_, Finset.mem_univ i⟩
-    intro hir
-    exact color_r_notMem_of_not_full_of_mem_faceDoors hnotfull hface (by simpa [hir] using hi)
-  · intro hi
-    exact erase_subset_colors_of_mem_faceDoors hface hi
-
-lemma color_ne_r_of_not_full_of_mem_faceDoors {N : ℕ}
-    {cell : TopCell (n := n) N}
-    {c : simplexGrid (n := n) N → n} {r : n}
-    {face : Finset (simplexGrid (n := n) N)}
-    (hnotfull : ¬ cell.Full c)
-    (hface : face ∈ cell.faceDoors c r)
-    {a : simplexGrid (n := n) N} (ha : a ∈ cell.verts) :
-    c a ≠ r := by
-  intro hcolor
-  have hmem : c a ∈ cell.colors c := by
-    rw [colors, Finset.mem_image]
-    exact ⟨a, ha, rfl⟩
-  have hrnot := color_r_notMem_of_not_full_of_mem_faceDoors hnotfull hface
-  exact hrnot (by simpa [hcolor] using hmem)
-
-lemma erase_mem_faceDoors_iff_exists_same_color_ne_of_not_full_of_mem_faceDoors {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {cell : TopCell (n := n) N}
-    {c : simplexGrid (n := n) N → n} {r : n}
-    {face : Finset (simplexGrid (n := n) N)}
-    (hnotfull : ¬ cell.Full c)
-    (hface : face ∈ cell.faceDoors c r)
-    {a : simplexGrid (n := n) N} (ha : a ∈ cell.verts) :
-    cell.verts.erase a ∈ cell.faceDoors c r ↔
-      ∃ b ∈ cell.verts, b ≠ a ∧ c b = c a := by
-  classical
-  have hcolors : cell.colors c = Finset.univ.erase r :=
-    colors_eq_erase_of_not_full_of_mem_faceDoors hnotfull hface
-  constructor
-  · intro ha_door
-    have himage :
-        (cell.verts.erase a).image c = cell.colors c := by
-      rw [hcolors]
-      exact face_colors_of_mem_faceDoors ha_door
-    exact (image_erase_eq_colors_iff_exists_same_color_ne ha).mp himage
-  · intro hdup
-    rw [mem_faceDoors_iff_exists_erase]
-    refine ⟨a, ha, rfl, ?_⟩
-    rw [← hcolors]
-    exact (image_erase_eq_colors_iff_exists_same_color_ne ha).mpr hdup
-
-lemma exists_ne_faceDoor_of_not_full_of_mem_faceDoors {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {cell : TopCell (n := n) N}
-    {c : simplexGrid (n := n) N → n} {r : n}
-    {face : Finset (simplexGrid (n := n) N)}
-    (hnotfull : ¬ cell.Full c)
-    (hface : face ∈ cell.faceDoors c r) :
-    ∃ face' ∈ cell.faceDoors c r, face' ≠ face := by
-  classical
-  obtain ⟨a, ha_cell, ha_not_face, hface_eq⟩ := exists_erase_eq_of_mem_faceDoors hface
-  have hca_ne_r : c a ≠ r :=
-    color_ne_r_of_not_full_of_mem_faceDoors hnotfull hface ha_cell
-  have hca_mem_colors : c a ∈ Finset.univ.erase r := by
-    rw [Finset.mem_erase]
-    exact ⟨hca_ne_r, Finset.mem_univ (c a)⟩
-  have hca_mem_face_image : c a ∈ face.image c := by
-    rw [face_colors_of_mem_faceDoors hface]
-    exact hca_mem_colors
-  rw [Finset.mem_image] at hca_mem_face_image
-  obtain ⟨b, hb_face, hb_color⟩ := hca_mem_face_image
-  have hb_cell : b ∈ cell.verts := face_mem_of_mem_faceDoors hface hb_face
-  have hba : b ≠ a := by
-    intro h
-    exact ha_not_face (h ▸ hb_face)
-  refine ⟨cell.verts.erase b, ?_, ?_⟩
-  · rw [erase_mem_faceDoors_iff_exists_same_color_ne_of_not_full_of_mem_faceDoors
-      hnotfull hface hb_cell]
-    exact ⟨a, ha_cell, Ne.symm hba, hb_color.symm⟩
-  · intro h_eq
-    have ha_mem_erase_b : a ∈ cell.verts.erase b := by
-      rw [Finset.mem_erase]
-      exact ⟨Ne.symm hba, ha_cell⟩
-    exact ha_not_face (by simpa [h_eq] using ha_mem_erase_b)
-
-lemma card_faceDoors_ne_one_of_not_full {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {cell : TopCell (n := n) N}
-    {c : simplexGrid (n := n) N → n} {r : n}
-    (hnotfull : ¬ cell.Full c) :
-    (cell.faceDoors c r).card ≠ 1 := by
-  classical
-  intro hcard
-  obtain ⟨face, hfaces⟩ := Finset.card_eq_one.mp hcard
-  have hface : face ∈ cell.faceDoors c r := by
-    rw [hfaces]
-    exact Finset.mem_singleton_self face
-  obtain ⟨face', hface', hne⟩ :=
-    exists_ne_faceDoor_of_not_full_of_mem_faceDoors hnotfull hface
-  rw [hfaces, Finset.mem_singleton] at hface'
-  exact hne hface'
-
-lemma faceDoors_eq_pair_of_not_full_of_mem_faceDoors {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {cell : TopCell (n := n) N}
-    {c : simplexGrid (n := n) N → n} {r : n}
-    {face : Finset (simplexGrid (n := n) N)}
-    (hnotfull : ¬ cell.Full c)
-    (hface : face ∈ cell.faceDoors c r) :
-    ∃ a b : simplexGrid (n := n) N,
-      a ∈ cell.verts ∧ b ∈ cell.verts ∧ a ≠ b ∧ c a = c b ∧
-        cell.faceDoors c r = {cell.verts.erase a, cell.verts.erase b} := by
-  classical
-  obtain ⟨a, ha_cell, ha_not_face, hface_eq⟩ := exists_erase_eq_of_mem_faceDoors hface
-  have hface_inj : Set.InjOn c face := color_injOn_face_of_mem_faceDoors hface
-  have hca_ne_r : c a ≠ r :=
-    color_ne_r_of_not_full_of_mem_faceDoors hnotfull hface ha_cell
-  have hca_mem_face_image : c a ∈ face.image c := by
-    rw [face_colors_of_mem_faceDoors hface, Finset.mem_erase]
-    exact ⟨hca_ne_r, Finset.mem_univ (c a)⟩
-  rw [Finset.mem_image] at hca_mem_face_image
-  obtain ⟨b, hb_face, hb_color⟩ := hca_mem_face_image
-  have hb_cell : b ∈ cell.verts := face_mem_of_mem_faceDoors hface hb_face
-  have hba : b ≠ a := by
-    intro h
-    exact ha_not_face (h ▸ hb_face)
-  have hb_door : cell.verts.erase b ∈ cell.faceDoors c r := by
-    rw [erase_mem_faceDoors_iff_exists_same_color_ne_of_not_full_of_mem_faceDoors
-      hnotfull hface hb_cell]
-    exact ⟨a, ha_cell, Ne.symm hba, hb_color.symm⟩
-  refine ⟨a, b, ha_cell, hb_cell, Ne.symm hba, hb_color.symm, ?_⟩
-  apply Finset.ext
-  intro face'
-  constructor
-  · intro hface'
-    obtain ⟨x, hx_cell, _hx_not_face', hface'_eq⟩ :=
-      exists_erase_eq_of_mem_faceDoors hface'
-    rw [Finset.mem_insert, Finset.mem_singleton]
-    by_cases hxa : x = a
-    · left
-      rw [hface'_eq, hxa]
-    · right
-      have hx_face : x ∈ face := by
-        rw [hface_eq, Finset.mem_erase]
-        exact ⟨hxa, hx_cell⟩
-      have hdup :
-          ∃ y ∈ cell.verts, y ≠ x ∧ c y = c x := by
-        rw [← erase_mem_faceDoors_iff_exists_same_color_ne_of_not_full_of_mem_faceDoors
-          hnotfull hface hx_cell]
-        rwa [← hface'_eq]
-      obtain ⟨y, hy_cell, hyx, hy_color⟩ := hdup
-      have hya : y = a := by
-        by_contra hya
-        have hy_face : y ∈ face := by
-          rw [hface_eq, Finset.mem_erase]
-          exact ⟨hya, hy_cell⟩
-        exact hyx (hface_inj hy_face hx_face hy_color)
-      have hcx : c x = c b := by
-        calc
-          c x = c y := hy_color.symm
-          _ = c a := by rw [hya]
-          _ = c b := hb_color.symm
-      have hxb : x = b := hface_inj hx_face hb_face hcx
-      rw [hface'_eq, hxb]
-  · intro hface'
-    rw [Finset.mem_insert, Finset.mem_singleton] at hface'
-    rcases hface' with hface' | hface'
-    · rw [hface']
-      rwa [hface_eq] at hface
-    · rw [hface']
-      exact hb_door
-
-omit [DecidableEq n] in
-lemma erase_ne_erase_of_mem_of_ne {N : ℕ} [DecidableEq (simplexGrid (n := n) N)]
-    {cell : TopCell (n := n) N} {a b : simplexGrid (n := n) N}
-    (hb : b ∈ cell.verts) (hab : a ≠ b) :
-    cell.verts.erase a ≠ cell.verts.erase b := by
-  intro h
-  have hb_erase_a : b ∈ cell.verts.erase a := by
-    rw [Finset.mem_erase]
-    exact ⟨Ne.symm hab, hb⟩
-  have hb_erase_b : b ∈ cell.verts.erase b := by
-    rw [← h]
-    exact hb_erase_a
-  exact (Finset.notMem_erase b cell.verts) hb_erase_b
-
-lemma card_faceDoors_eq_two_of_not_full_of_mem_faceDoors {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {cell : TopCell (n := n) N}
-    {c : simplexGrid (n := n) N → n} {r : n}
-    {face : Finset (simplexGrid (n := n) N)}
-    (hnotfull : ¬ cell.Full c)
-    (hface : face ∈ cell.faceDoors c r) :
-    (cell.faceDoors c r).card = 2 := by
-  classical
-  obtain ⟨a, b, ha, hb, hab, _hcolor, hdoors⟩ :=
-    faceDoors_eq_pair_of_not_full_of_mem_faceDoors hnotfull hface
-  have hne : cell.verts.erase a ≠ cell.verts.erase b :=
-    erase_ne_erase_of_mem_of_ne hb hab
-  rw [hdoors]
-  exact Finset.card_pair hne
-
-lemma even_card_faceDoors_of_not_full {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {cell : TopCell (n := n) N}
-    {c : simplexGrid (n := n) N → n} {r : n}
-    (hnotfull : ¬ cell.Full c) :
-    Even (cell.faceDoors c r).card := by
-  classical
-  by_cases hnonempty : (cell.faceDoors c r).Nonempty
-  · obtain ⟨face, hface⟩ := hnonempty
-    rw [card_faceDoors_eq_two_of_not_full_of_mem_faceDoors hnotfull hface]
-    exact even_two
-  · have hempty : cell.faceDoors c r = ∅ := by
-      exact Finset.not_nonempty_iff_eq_empty.mp hnonempty
-    rw [hempty]
-    exact ⟨0, by simp⟩
-
-lemma full_of_odd_card_faceDoors {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {cell : TopCell (n := n) N}
-    {c : simplexGrid (n := n) N → n} {r : n}
-    (hodd : Odd (cell.faceDoors c r).card) :
-    cell.Full c := by
-  by_contra hnotfull
-  exact (Nat.not_even_iff_odd.2 hodd) (even_card_faceDoors_of_not_full hnotfull)
-
-lemma exists_full_of_odd_sum_faceDoors {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    (c : simplexGrid (n := n) N → n) (r : n)
-    (hodd :
-      Odd ((Finset.univ : Finset (TopCell (n := n) N)).sum fun cell =>
-        (cell.faceDoors c r).card)) :
-    ∃ cell : TopCell (n := n) N, cell.Full c := by
-  classical
-  by_contra hnone
-  have heven :
-      Even ((Finset.univ : Finset (TopCell (n := n) N)).sum fun cell =>
-        (cell.faceDoors c r).card) := by
-    apply Finset.even_sum
-    intro cell _hcell
-    exact even_card_faceDoors_of_not_full (by
-      intro hfull
-      exact hnone ⟨cell, hfull⟩)
-  exact (Nat.not_even_iff_odd.2 hodd) heven
-
-lemma exists_fullyLabeledUnitCluster_of_odd_sum_faceDoors {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    (c : simplexGrid (n := n) N → n) (r : n)
-    (hodd :
-      Odd ((Finset.univ : Finset (TopCell (n := n) N)).sum fun cell =>
-        (cell.faceDoors c r).card)) :
-    ∃ base : simplexGrid (n := n) N,
-      FullyLabeledUnitCluster (n := n) c base := by
-  obtain ⟨cell, hfull⟩ := exists_full_of_odd_sum_faceDoors c r hodd
-  exact ⟨cell.base, cell.fullyLabeledUnitCluster_of_full c hfull⟩
-
-lemma not_forall_unitNeighborhood_image_ne_univ_of_odd_sum_faceDoors {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    (c : simplexGrid (n := n) N → n) (r : n)
-    (hodd :
-      Odd ((Finset.univ : Finset (TopCell (n := n) N)).sum fun cell =>
-        (cell.faceDoors c r).card)) :
-    ¬ ∀ base : simplexGrid (n := n) N,
-      ((unitNeighborhood (n := n) N base).image c : Finset n) ≠ Finset.univ := by
-  intro hforall
-  obtain ⟨base, hfull⟩ := exists_fullyLabeledUnitCluster_of_odd_sum_faceDoors c r hodd
-  exact hforall base ((fullyLabeledUnitCluster_iff_image_eq_univ c base).mp hfull)
-
-lemma exists_fullyLabeledUnitCluster_of_family_odd_sum_faceDoors {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {Cell : Type*} [Fintype Cell]
-    (toTopCell : Cell → TopCell (n := n) N)
-    (c : simplexGrid (n := n) N → n) (r : n)
-    (hodd :
-      Odd ((Finset.univ : Finset Cell).sum fun cell =>
-        ((toTopCell cell).faceDoors c r).card)) :
-    ∃ base : simplexGrid (n := n) N,
-      FullyLabeledUnitCluster (n := n) c base := by
-  classical
-  by_contra hnone
-  have heven :
-      Even ((Finset.univ : Finset Cell).sum fun cell =>
-        ((toTopCell cell).faceDoors c r).card) := by
-    apply Finset.even_sum
-    intro cell _hcell
-    exact even_card_faceDoors_of_not_full (by
-      intro hfull
-      exact hnone ⟨(toTopCell cell).base,
-        (toTopCell cell).fullyLabeledUnitCluster_of_full c hfull⟩)
-  exact (Nat.not_even_iff_odd.2 hodd) heven
-
-lemma not_forall_unitNeighborhood_image_ne_univ_of_family_odd_sum_faceDoors {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {Cell : Type*} [Fintype Cell]
-    (toTopCell : Cell → TopCell (n := n) N)
-    (c : simplexGrid (n := n) N → n) (r : n)
-    (hodd :
-      Odd ((Finset.univ : Finset Cell).sum fun cell =>
-        ((toTopCell cell).faceDoors c r).card)) :
-    ¬ ∀ base : simplexGrid (n := n) N,
-      ((unitNeighborhood (n := n) N base).image c : Finset n) ≠ Finset.univ := by
-  intro hforall
-  obtain ⟨base, hfull⟩ :=
-    exists_fullyLabeledUnitCluster_of_family_odd_sum_faceDoors toTopCell c r hodd
-  exact hforall base ((fullyLabeledUnitCluster_iff_image_eq_univ c base).mp hfull)
-
-noncomputable def familyDoorIncidences {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {Cell : Type*} [Fintype Cell]
-    (toTopCell : Cell → TopCell (n := n) N)
-    (c : simplexGrid (n := n) N → n) (r : n) :
-    Finset (Σ _cell : Cell, Finset (simplexGrid (n := n) N)) :=
-  (Finset.univ : Finset Cell).sigma fun cell => (toTopCell cell).faceDoors c r
-
-lemma mem_familyDoorIncidences {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {Cell : Type*} [Fintype Cell]
-    (toTopCell : Cell → TopCell (n := n) N)
-    (c : simplexGrid (n := n) N → n) (r : n)
-    {door : Σ _cell : Cell, Finset (simplexGrid (n := n) N)} :
-    door ∈ familyDoorIncidences toTopCell c r ↔
-      door.2 ∈ (toTopCell door.1).faceDoors c r := by
-  classical
-  cases door
-  simp [familyDoorIncidences]
-
-lemma card_familyDoorIncidences {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {Cell : Type*} [Fintype Cell]
-    (toTopCell : Cell → TopCell (n := n) N)
-    (c : simplexGrid (n := n) N → n) (r : n) :
-    (familyDoorIncidences toTopCell c r).card =
-      (Finset.univ : Finset Cell).sum fun cell =>
-        ((toTopCell cell).faceDoors c r).card := by
-  classical
-  simp [familyDoorIncidences]
-
-lemma odd_card_familyDoorIncidences_iff {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {Cell : Type*} [Fintype Cell]
-    (toTopCell : Cell → TopCell (n := n) N)
-    (c : simplexGrid (n := n) N → n) (r : n) :
-    Odd (familyDoorIncidences toTopCell c r).card ↔
-      Odd ((Finset.univ : Finset Cell).sum fun cell =>
-        ((toTopCell cell).faceDoors c r).card) := by
-  rw [card_familyDoorIncidences]
-
-lemma exists_fullyLabeledUnitCluster_of_odd_card_familyDoorIncidences {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {Cell : Type*} [Fintype Cell]
-    (toTopCell : Cell → TopCell (n := n) N)
-    (c : simplexGrid (n := n) N → n) (r : n)
-    (hodd : Odd (familyDoorIncidences toTopCell c r).card) :
-    ∃ base : simplexGrid (n := n) N,
-      FullyLabeledUnitCluster (n := n) c base := by
-  exact exists_fullyLabeledUnitCluster_of_family_odd_sum_faceDoors toTopCell c r
-    ((odd_card_familyDoorIncidences_iff toTopCell c r).mp hodd)
-
-lemma odd_card_familyDoorIncidences_of_even_odd_partition {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {Cell : Type*} [Fintype Cell] [DecidableEq Cell]
-    (toTopCell : Cell → TopCell (n := n) N)
-    (c : simplexGrid (n := n) N → n) (r : n)
-    (internal exterior : Finset (Σ _cell : Cell, Finset (simplexGrid (n := n) N)))
-    (hpartition : familyDoorIncidences toTopCell c r = internal ∪ exterior)
-    (hdisj : Disjoint internal exterior)
-    (hinternal : Even internal.card)
-    (hexterior : Odd exterior.card) :
-    Odd (familyDoorIncidences toTopCell c r).card := by
-  rw [hpartition, Finset.card_union_of_disjoint hdisj]
-  exact Even.add_odd hinternal hexterior
-
-lemma exists_fullyLabeledUnitCluster_of_even_odd_incidence_partition {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {Cell : Type*} [Fintype Cell] [DecidableEq Cell]
-    (toTopCell : Cell → TopCell (n := n) N)
-    (c : simplexGrid (n := n) N → n) (r : n)
-    (internal exterior : Finset (Σ _cell : Cell, Finset (simplexGrid (n := n) N)))
-    (hpartition : familyDoorIncidences toTopCell c r = internal ∪ exterior)
-    (hdisj : Disjoint internal exterior)
-    (hinternal : Even internal.card)
-    (hexterior : Odd exterior.card) :
-    ∃ base : simplexGrid (n := n) N,
-      FullyLabeledUnitCluster (n := n) c base := by
-  exact exists_fullyLabeledUnitCluster_of_odd_card_familyDoorIncidences toTopCell c r
-    (odd_card_familyDoorIncidences_of_even_odd_partition toTopCell c r
-      internal exterior hpartition hdisj hinternal hexterior)
-
-lemma even_card_finset_of_fixedPointFree_involution {α : Type*} [DecidableEq α]
-    (s : Finset α) (mate : α → α)
-    (hmem : ∀ x ∈ s, mate x ∈ s)
-    (hinv : ∀ x ∈ s, mate (mate x) = x)
-    (hfree : ∀ x ∈ s, mate x ≠ x) :
-    Even s.card := by
-  classical
-  have H :
-      ∀ n : ℕ, ∀ s : Finset α, s.card = n →
-        (∀ x ∈ s, mate x ∈ s) →
-        (∀ x ∈ s, mate (mate x) = x) →
-        (∀ x ∈ s, mate x ≠ x) →
-        Even s.card := by
-    intro n
-    induction n using Nat.strong_induction_on with
-    | h n ih =>
-        intro s hcard hmem hinv hfree
-        by_cases hs_empty : s = ∅
-        · rw [hs_empty]
-          exact ⟨0, by simp⟩
-        · have hs_nonempty : s.Nonempty := Finset.nonempty_iff_ne_empty.mpr hs_empty
-          obtain ⟨x, hx⟩ := hs_nonempty
-          let y := mate x
-          have hy : y ∈ s := hmem x hx
-          have hyx : y ≠ x := hfree x hx
-          let s' := (s.erase x).erase y
-          have hx_ne_y : x ≠ y := Ne.symm hyx
-          have hcard_s' : s'.card + 2 = s.card := by
-            have hy_erase_x : y ∈ s.erase x := by
-              rw [Finset.mem_erase]
-              exact ⟨hyx, hy⟩
-            have h1 : s'.card + 1 = (s.erase x).card := by
-              dsimp [s']
-              exact Finset.card_erase_add_one hy_erase_x
-            have h2 : (s.erase x).card + 1 = s.card :=
-              Finset.card_erase_add_one hx
-            omega
-          have hcard_lt : s'.card < n := by
-            rw [← hcard, ← hcard_s']
-            omega
-          have hmem' : ∀ z ∈ s', mate z ∈ s' := by
-            intro z hz
-            rw [Finset.mem_erase] at hz
-            obtain ⟨hzy, hz_erase_x⟩ := hz
-            rw [Finset.mem_erase] at hz_erase_x
-            obtain ⟨hzx, hz_s⟩ := hz_erase_x
-            have hmz_s : mate z ∈ s := hmem z hz_s
-            have hmz_ne_x : mate z ≠ x := by
-              intro hmzx
-              have hz_eq_y : z = y := by
-                calc
-                  z = mate (mate z) := (hinv z hz_s).symm
-                  _ = mate x := by rw [hmzx]
-                  _ = y := rfl
-              exact hzy hz_eq_y
-            have hmz_ne_y : mate z ≠ y := by
-              intro hmzy
-              have hz_eq_x : z = x := by
-                calc
-                  z = mate (mate z) := (hinv z hz_s).symm
-                  _ = mate y := by rw [hmzy]
-                  _ = x := by
-                    dsimp [y]
-                    exact hinv x hx
-              exact hzx hz_eq_x
-            rw [Finset.mem_erase]
-            exact ⟨hmz_ne_y, by
-              rw [Finset.mem_erase]
-              exact ⟨hmz_ne_x, hmz_s⟩⟩
-          have hinv' : ∀ z ∈ s', mate (mate z) = z := by
-            intro z hz
-            exact hinv z
-              (Finset.erase_subset x s ((Finset.erase_subset y (s.erase x)) hz))
-          have hfree' : ∀ z ∈ s', mate z ≠ z := by
-            intro z hz
-            exact hfree z
-              (Finset.erase_subset x s ((Finset.erase_subset y (s.erase x)) hz))
-          have heven' : Even s'.card := ih s'.card hcard_lt s' rfl hmem' hinv' hfree'
-          rw [← hcard_s']
-          exact heven'.add even_two
-  exact H s.card s rfl hmem hinv hfree
-
-def IsExteriorFacet {N : ℕ} (F : Finset (simplexGrid (n := n) N)) : Prop :=
-  ∃ q : n, ∀ a ∈ F, a.1 q = 0
-
-noncomputable def familyInternalDoorIncidences {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {Cell : Type*} [Fintype Cell]
-    (toTopCell : Cell → TopCell (n := n) N)
-    (c : simplexGrid (n := n) N → n) (r : n) :
-    Finset (Σ _cell : Cell, Finset (simplexGrid (n := n) N)) :=
-  by
-    classical
-    exact (familyDoorIncidences toTopCell c r).filter fun incidence =>
-      ¬ IsExteriorFacet (n := n) incidence.2
-
-noncomputable def familyExteriorDoorIncidences {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {Cell : Type*} [Fintype Cell]
-    (toTopCell : Cell → TopCell (n := n) N)
-    (c : simplexGrid (n := n) N → n) (r : n) :
-    Finset (Σ _cell : Cell, Finset (simplexGrid (n := n) N)) :=
-  by
-    classical
-    exact (familyDoorIncidences toTopCell c r).filter fun incidence =>
-      IsExteriorFacet (n := n) incidence.2
-
-lemma mem_familyInternalDoorIncidences {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {Cell : Type*} [Fintype Cell]
-    (toTopCell : Cell → TopCell (n := n) N)
-    (c : simplexGrid (n := n) N → n) (r : n)
-    {incidence : Σ _cell : Cell, Finset (simplexGrid (n := n) N)} :
-    incidence ∈ familyInternalDoorIncidences toTopCell c r ↔
-      incidence ∈ familyDoorIncidences toTopCell c r ∧
-        ¬ IsExteriorFacet (n := n) incidence.2 := by
-  classical
-  simp [familyInternalDoorIncidences]
-
-lemma mem_familyExteriorDoorIncidences {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {Cell : Type*} [Fintype Cell]
-    (toTopCell : Cell → TopCell (n := n) N)
-    (c : simplexGrid (n := n) N → n) (r : n)
-    {incidence : Σ _cell : Cell, Finset (simplexGrid (n := n) N)} :
-    incidence ∈ familyExteriorDoorIncidences toTopCell c r ↔
-      incidence ∈ familyDoorIncidences toTopCell c r ∧
-        IsExteriorFacet (n := n) incidence.2 := by
-  classical
-  simp [familyExteriorDoorIncidences]
-
-lemma familyDoorIncidences_eq_internal_union_exterior {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {Cell : Type*} [Fintype Cell] [DecidableEq Cell]
-    (toTopCell : Cell → TopCell (n := n) N)
-    (c : simplexGrid (n := n) N → n) (r : n) :
-    familyDoorIncidences toTopCell c r =
-      familyInternalDoorIncidences toTopCell c r ∪
-        familyExteriorDoorIncidences toTopCell c r := by
-  classical
-  apply Finset.ext
-  intro incidence
-  by_cases hex : IsExteriorFacet (n := n) incidence.2 <;>
-    simp [familyInternalDoorIncidences, familyExteriorDoorIncidences, hex]
-
-lemma disjoint_familyInternalDoorIncidences_exterior {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {Cell : Type*} [Fintype Cell] [DecidableEq Cell]
-    (toTopCell : Cell → TopCell (n := n) N)
-    (c : simplexGrid (n := n) N → n) (r : n) :
-    Disjoint
-      (familyInternalDoorIncidences toTopCell c r)
-      (familyExteriorDoorIncidences toTopCell c r) := by
-  classical
-  rw [Finset.disjoint_left]
-  intro incidence hint hext
-  rw [mem_familyInternalDoorIncidences] at hint
-  rw [mem_familyExteriorDoorIncidences] at hext
-  exact hint.2 hext.2
-
-lemma exists_fullyLabeledUnitCluster_of_family_internal_even_exterior_odd {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {Cell : Type*} [Fintype Cell] [DecidableEq Cell]
-    (toTopCell : Cell → TopCell (n := n) N)
-    (c : simplexGrid (n := n) N → n) (r : n)
-    (hinternal : Even (familyInternalDoorIncidences toTopCell c r).card)
-    (hexterior : Odd (familyExteriorDoorIncidences toTopCell c r).card) :
-    ∃ base : simplexGrid (n := n) N,
-      FullyLabeledUnitCluster (n := n) c base := by
-  exact exists_fullyLabeledUnitCluster_of_even_odd_incidence_partition
-    toTopCell c r
-    (familyInternalDoorIncidences toTopCell c r)
-    (familyExteriorDoorIncidences toTopCell c r)
-    (familyDoorIncidences_eq_internal_union_exterior toTopCell c r)
-    (disjoint_familyInternalDoorIncidences_exterior toTopCell c r)
-    hinternal hexterior
-
-lemma image_univ_erase_eq_of_eq_off {α β : Type*} [Fintype α] [DecidableEq α]
-    [DecidableEq β] {f g : α → β} (hf : Function.Injective f)
-    (hg : Function.Injective g) (q : α) (hfg : ∀ t : α, t ≠ q → f t = g t) :
-    ((Finset.univ : Finset α).image f).erase (f q) =
-      ((Finset.univ : Finset α).image g).erase (g q) := by
-  classical
-  apply Finset.ext
-  intro x
-  constructor
-  · intro hx
-    rw [Finset.mem_erase] at hx
-    rw [Finset.mem_erase]
-    rw [Finset.mem_image] at hx
-    obtain ⟨t, _ht, hft⟩ := hx.2
-    have htq : t ≠ q := by
-      intro htq
-      exact hx.1 (by rw [← hft, htq])
-    refine ⟨?_, ?_⟩
-    · intro hxgq
-      have hgtq : g t = g q := by
-        rw [← hfg t htq, hft, hxgq]
-      exact htq (hg hgtq)
-    · rw [Finset.mem_image]
-      exact ⟨t, Finset.mem_univ t, by rw [← hfg t htq, hft]⟩
-  · intro hx
-    rw [Finset.mem_erase] at hx
-    rw [Finset.mem_erase]
-    rw [Finset.mem_image] at hx
-    obtain ⟨t, _ht, hgt⟩ := hx.2
-    have htq : t ≠ q := by
-      intro htq
-      exact hx.1 (by rw [← hgt, htq])
-    refine ⟨?_, ?_⟩
-    · intro hfq
-      have hftq : f t = f q := by
-        rw [hfg t htq, hgt, hfq]
-      exact htq (hf hftq)
-    · rw [Finset.mem_image]
-      exact ⟨t, Finset.mem_univ t, by rw [hfg t htq, hgt]⟩
-
-lemma finset_insert_erase_comm {α : Type*} [DecidableEq α]
-    (S : Finset α) {a b x y : α}
-    (hab : a ≠ b) (hxb : x ≠ b) (hya : y ≠ a) :
-    insert y ((insert x (S.erase a)).erase b) =
-      insert x ((insert y (S.erase b)).erase a) := by
-  classical
-  apply Finset.ext
-  intro z
-  by_cases hzy : z = y
-  · subst z
-    simp [hya]
-  · by_cases hzx : z = x
-    · subst z
-      simp [hzy, hxb]
-    · by_cases hza : z = a
-      · subst z
-        simp [hzy, hzx, hab]
-      · by_cases hzb : z = b
-        · subst z
-          simp [hzy, hzx]
-        · simp [hzy, hzx, hza, hzb]
-
-structure FamilyInteriorFacetNeighborData {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {Cell : Type*} [Fintype Cell] [DecidableEq Cell]
-    (toTopCell : Cell → TopCell (n := n) N) where
-  other :
-    Cell → Finset (simplexGrid (n := n) N) → Cell
-  other_mem :
-    ∀ (cell : Cell) (face : Finset (simplexGrid (n := n) N))
-      (_hfacet : face ∈ (toTopCell cell).facets)
-      (_hint : ¬ IsExteriorFacet (n := n) face),
-      face ∈ (toTopCell (other cell face)).facets
-  other_ne :
-    ∀ (cell : Cell) (face : Finset (simplexGrid (n := n) N))
-      (_hfacet : face ∈ (toTopCell cell).facets)
-      (_hint : ¬ IsExteriorFacet (n := n) face),
-      other cell face ≠ cell
-  other_involutive :
-    ∀ (cell : Cell) (face : Finset (simplexGrid (n := n) N))
-      (_hfacet : face ∈ (toTopCell cell).facets)
-      (_hint : ¬ IsExteriorFacet (n := n) face),
-      other (other cell face) face = cell
-
-namespace FamilyInteriorFacetNeighborData
-
-noncomputable def incidenceMate {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {Cell : Type*} [Fintype Cell] [DecidableEq Cell]
-    {toTopCell : Cell → TopCell (n := n) N}
-    (D : FamilyInteriorFacetNeighborData toTopCell)
-    (_c : simplexGrid (n := n) N → n) (_r : n)
-    (incidence : Σ _cell : Cell, Finset (simplexGrid (n := n) N)) :
-    Σ _cell : Cell, Finset (simplexGrid (n := n) N) :=
-  ⟨D.other incidence.1 incidence.2, incidence.2⟩
-
-lemma incidenceMate_mem {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {Cell : Type*} [Fintype Cell] [DecidableEq Cell]
-    {toTopCell : Cell → TopCell (n := n) N}
-    (D : FamilyInteriorFacetNeighborData toTopCell)
-    (c : simplexGrid (n := n) N → n) (r : n)
-    (incidence : Σ _cell : Cell, Finset (simplexGrid (n := n) N))
-    (hinc : incidence ∈ familyInternalDoorIncidences toTopCell c r) :
-    D.incidenceMate c r incidence ∈ familyInternalDoorIncidences toTopCell c r := by
-  classical
-  rw [mem_familyInternalDoorIncidences] at hinc ⊢
-  refine ⟨?_, hinc.2⟩
-  rw [mem_familyDoorIncidences]
-  rw [mem_familyDoorIncidences] at hinc
-  have hfacet := D.other_mem incidence.1 incidence.2
-      (TopCell.faceDoors_subset_facets (toTopCell incidence.1) c r hinc.1) hinc.2
-  have hcolors := face_colors_of_mem_faceDoors hinc.1
-  rw [TopCell.mem_facets] at hfacet
-  rw [TopCell.faceDoors, Finset.mem_filter]
-  exact ⟨Finset.mem_powerset.mpr hfacet.1, hfacet.2, hcolors⟩
-
-lemma incidenceMate_involutive {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {Cell : Type*} [Fintype Cell] [DecidableEq Cell]
-    {toTopCell : Cell → TopCell (n := n) N}
-    (D : FamilyInteriorFacetNeighborData toTopCell)
-    (c : simplexGrid (n := n) N → n) (r : n)
-    (incidence : Σ _cell : Cell, Finset (simplexGrid (n := n) N))
-    (hinc : incidence ∈ familyInternalDoorIncidences toTopCell c r) :
-    D.incidenceMate c r (D.incidenceMate c r incidence) = incidence := by
-  classical
-  rw [mem_familyInternalDoorIncidences] at hinc
-  rw [mem_familyDoorIncidences] at hinc
-  apply Sigma.ext
-  · exact D.other_involutive incidence.1 incidence.2
-      (TopCell.faceDoors_subset_facets (toTopCell incidence.1) c r hinc.1) hinc.2
-  · simp [incidenceMate]
-
-lemma incidenceMate_fixedPointFree {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {Cell : Type*} [Fintype Cell] [DecidableEq Cell]
-    {toTopCell : Cell → TopCell (n := n) N}
-    (D : FamilyInteriorFacetNeighborData toTopCell)
-    (c : simplexGrid (n := n) N → n) (r : n)
-    (incidence : Σ _cell : Cell, Finset (simplexGrid (n := n) N))
-    (hinc : incidence ∈ familyInternalDoorIncidences toTopCell c r) :
-    D.incidenceMate c r incidence ≠ incidence := by
-  classical
-  intro h
-  rw [mem_familyInternalDoorIncidences] at hinc
-  rw [mem_familyDoorIncidences] at hinc
-  have hcell : D.other incidence.1 incidence.2 = incidence.1 := congrArg Sigma.fst h
-  exact D.other_ne incidence.1 incidence.2
-    (TopCell.faceDoors_subset_facets (toTopCell incidence.1) c r hinc.1) hinc.2 hcell
-
-lemma even_card_internalDoorIncidences {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {Cell : Type*} [Fintype Cell] [DecidableEq Cell]
-    {toTopCell : Cell → TopCell (n := n) N}
-    (D : FamilyInteriorFacetNeighborData toTopCell)
-    (c : simplexGrid (n := n) N → n) (r : n) :
-    Even (familyInternalDoorIncidences toTopCell c r).card := by
-  exact even_card_finset_of_fixedPointFree_involution
-    (familyInternalDoorIncidences toTopCell c r)
-    (D.incidenceMate c r)
-    (D.incidenceMate_mem c r)
-    (D.incidenceMate_involutive c r)
-    (D.incidenceMate_fixedPointFree c r)
-
-end FamilyInteriorFacetNeighborData
-
-lemma boundary_coord_eq_missing_of_face_colors_erase {N : ℕ}
-    {c : simplexGrid (n := n) N → n} {r q : n}
-    {F : Finset (simplexGrid (n := n) N)}
-    (hc : ∀ (a : simplexGrid (n := n) N) (i : n), a.1 i = 0 → c a ≠ i)
-    (hcolors : F.image c = Finset.univ.erase r)
-    (hq : ∀ a ∈ F, a.1 q = 0) :
-    q = r := by
-  classical
-  by_contra hqr
-  have hq_mem : q ∈ F.image c := by
-    rw [hcolors]
-    simp [hqr]
-  rw [Finset.mem_image] at hq_mem
-  obtain ⟨a, haF, hca⟩ := hq_mem
-  exact hc a q (hq a haF) hca
-
-lemma fullyLabeledUnitCluster_of_full {N : ℕ}
-    (cell : TopCell (n := n) N) (c : simplexGrid (n := n) N → n)
-    (hfull : cell.Full c) :
-    FullyLabeledUnitCluster (n := n) c cell.base := by
-  exact cell.toUnitCell.fullyLabeledUnitCluster_of_full c hfull
-
-lemma exists_fullyLabeledUnitCluster_of_odd_door_graph {N : ℕ}
-    (G : SimpleGraph (Option (TopCell (n := n) N))) [DecidableRel G.Adj]
-    (c : simplexGrid (n := n) N → n)
-    (hout : Odd (G.degree none))
-    (hodd_full :
-      ∀ cell : TopCell (n := n) N, Odd (G.degree (some cell)) → cell.Full c) :
-    ∃ base : simplexGrid (n := n) N,
-      FullyLabeledUnitCluster (n := n) c base := by
-  obtain ⟨cell, hfull⟩ :=
-    exists_full_cell_of_odd_door_graph G (fun cell : TopCell (n := n) N => cell.Full c)
-      hout hodd_full
-  exact ⟨cell.base, cell.fullyLabeledUnitCluster_of_full c hfull⟩
-
-lemma exists_fullyLabeledUnitCluster_of_door_graph_faceDegrees {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    (G : SimpleGraph (Option (TopCell (n := n) N))) [DecidableRel G.Adj]
-    (c : simplexGrid (n := n) N → n) (r : n)
-    (hout : Odd (G.degree none))
-    (hdegree :
-      ∀ cell : TopCell (n := n) N, G.degree (some cell) = (cell.faceDoors c r).card) :
-    ∃ base : simplexGrid (n := n) N,
-      FullyLabeledUnitCluster (n := n) c base := by
-  refine exists_fullyLabeledUnitCluster_of_odd_door_graph G c hout ?_
-  intro cell hodd
-  exact full_of_odd_card_faceDoors (by
-    rw [← hdegree cell]
-    exact hodd)
-
-lemma exists_fullyLabeledUnitCluster_of_family_door_graph {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {Cell : Type*} [Fintype Cell]
-    (toTopCell : Cell → TopCell (n := n) N)
-    (G : SimpleGraph (Option Cell)) [DecidableRel G.Adj]
-    (c : simplexGrid (n := n) N → n) (r : n)
-    (hout : Odd (G.degree none))
-    (hdegree :
-      ∀ cell : Cell, G.degree (some cell) = ((toTopCell cell).faceDoors c r).card) :
-    ∃ base : simplexGrid (n := n) N,
-      FullyLabeledUnitCluster (n := n) c base := by
-  have hodd_full :
-      ∀ cell : Cell, Odd (G.degree (some cell)) → (toTopCell cell).Full c := by
-    intro cell hodd
-    exact full_of_odd_card_faceDoors (by
-      rw [← hdegree cell]
-      exact hodd)
-  obtain ⟨cell, hfull⟩ :=
-    exists_full_cell_of_odd_door_graph G
-      (fun cell : Cell => (toTopCell cell).Full c) hout hodd_full
-  exact ⟨(toTopCell cell).base,
-    (toTopCell cell).fullyLabeledUnitCluster_of_full c hfull⟩
-
-structure DoorGraphFamilyData {N : ℕ}
-    (c : simplexGrid (n := n) N → n) (r : n) where
-  Cell : Type*
-  fintypeCell : Fintype Cell
-  toTopCell : Cell → TopCell (n := n) N
-  G : SimpleGraph (Option Cell)
-  decidableAdj : DecidableRel G.Adj
-  outside_odd : Odd (G.degree none)
-  degree_eq_faceDoors :
-    ∀ cell : Cell, G.degree (some cell) = ((toTopCell cell).faceDoors c r).card
-
-lemma exists_fullyLabeledUnitCluster_of_doorGraphFamilyData {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {c : simplexGrid (n := n) N → n} {r : n}
-    (D : DoorGraphFamilyData (n := n) c r) :
-    ∃ base : simplexGrid (n := n) N,
-      FullyLabeledUnitCluster (n := n) c base := by
-  letI := D.fintypeCell
-  letI := D.decidableAdj
-  exact exists_fullyLabeledUnitCluster_of_family_door_graph
-    D.toTopCell D.G c r D.outside_odd D.degree_eq_faceDoors
-
-lemma not_forall_unitNeighborhood_image_ne_univ_of_doorGraphFamilyData {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {c : simplexGrid (n := n) N → n} {r : n}
-    (D : DoorGraphFamilyData (n := n) c r) :
-    ¬ ∀ base : simplexGrid (n := n) N,
-      ((unitNeighborhood (n := n) N base).image c : Finset n) ≠ Finset.univ := by
-  intro hforall
-  obtain ⟨base, hfull⟩ := exists_fullyLabeledUnitCluster_of_doorGraphFamilyData D
-  exact hforall base ((fullyLabeledUnitCluster_iff_image_eq_univ c base).mp hfull)
-
-lemma not_forall_unitNeighborhood_image_ne_univ_of_fin_card_doorGraphFamilyData [Nonempty n]
-    {N : ℕ} (c : simplexGrid (n := n) N → n)
-    (hc : ∀ (a : simplexGrid (n := n) N) (i : n), a.1 i = 0 → c a ≠ i)
-    (hfin :
-      ∀ cfin : simplexGrid (n := Fin (Fintype.card n)) N → Fin (Fintype.card n),
-        (∀ (a : simplexGrid (n := Fin (Fintype.card n)) N) (i : Fin (Fintype.card n)),
-          a.1 i = 0 → cfin a ≠ i) →
-          ∃ r : Fin (Fintype.card n),
-            Nonempty (DoorGraphFamilyData (n := Fin (Fintype.card n)) cfin r)) :
-    ¬ ∀ base : simplexGrid (n := n) N,
-      ((unitNeighborhood (n := n) N base).image c : Finset n) ≠ Finset.univ := by
-  intro hforall
-  have hcluster :
-      ∃ base : simplexGrid (n := n) N,
-        FullyLabeledUnitCluster (n := n) c base := by
-    refine exists_fullyLabeledUnitCluster_of_fin_card_case c hc ?_
-    intro cfin hcfin
-    obtain ⟨r, ⟨D⟩⟩ := hfin cfin hcfin
-    exact exists_fullyLabeledUnitCluster_of_doorGraphFamilyData D
-  obtain ⟨base, hfull⟩ := hcluster
-  exact hforall base ((fullyLabeledUnitCluster_iff_image_eq_univ c base).mp hfull)
-
-structure CubeSliceAnchor (k N : ℕ) where
-  b : Fin k → ℕ
-  m : ℕ
-  hm_pos : 0 < m
-  hm_lt : m < k
-  hsum : (∑ i, b i) + m = N
-
-namespace CubeSliceAnchor
-
-lemma b_le_N {k N : ℕ} (A : CubeSliceAnchor k N) (i : Fin k) :
-    A.b i ≤ N := by
-  have hi_le_sum : A.b i ≤ ∑ j, A.b j :=
-    Finset.single_le_sum (fun j _ => Nat.zero_le (A.b j)) (Finset.mem_univ i)
-  have hsum_le : ∑ j, A.b j ≤ N := by
-    have hsum := A.hsum
-    omega
-  exact hi_le_sum.trans hsum_le
-
-noncomputable instance instFintype (k N : ℕ) :
-    Fintype (CubeSliceAnchor k N) := by
-  classical
-  refine Fintype.ofEquiv
-    {p : (Fin k → Fin (N + 1)) × Fin (k + 1) //
-      0 < p.2.1 ∧ p.2.1 < k ∧ (∑ i : Fin k, (p.1 i).1) + p.2.1 = N} ?_
-  refine
-    { toFun := fun p =>
-        { b := fun i => (p.1.1 i).1
-          m := p.1.2.1
-          hm_pos := p.2.1
-          hm_lt := p.2.2.1
-          hsum := p.2.2.2 }
-      invFun := fun A =>
-        ⟨(fun i => ⟨A.b i, Nat.lt_succ_of_le (A.b_le_N i)⟩,
-          ⟨A.m, Nat.lt_succ_of_lt A.hm_lt⟩),
-          A.hm_pos, A.hm_lt, by simpa using A.hsum⟩
-      left_inv := ?_
-      right_inv := ?_ }
-  · intro p
-    cases p with
-    | mk val h =>
-        cases val with
-        | mk b m =>
-            simp
-  · intro A
-    cases A
-    rfl
-
-end CubeSliceAnchor
-
-def sliceVertex {k N : ℕ} (A : CubeSliceAnchor k N)
-    (S : Finset (Fin k)) (hS : S.card = A.m) :
-    simplexGrid (n := Fin k) N :=
-  ⟨fun i => A.b i + if i ∈ S then 1 else 0, by
-    have h01 :
-        (∑ i : Fin k, (if i ∈ S then 1 else 0 : ℕ)) = S.card := by
-      simp
-    rw [Finset.sum_add_distrib, h01, hS, A.hsum]⟩
-
-@[simp]
-lemma sliceVertex_apply {k N : ℕ} (A : CubeSliceAnchor k N)
-    (S : Finset (Fin k)) (hS : S.card = A.m) (i : Fin k) :
-    (sliceVertex A S hS).1 i = A.b i + if i ∈ S then 1 else 0 :=
-  rfl
-
-lemma unitClose_sliceVertex_sliceVertex {k N : ℕ} (A : CubeSliceAnchor k N)
-    {S T : Finset (Fin k)} (hS : S.card = A.m) (hT : T.card = A.m) :
-    UnitClose (n := Fin k) (sliceVertex A S hS) (sliceVertex A T hT) := by
-  intro i
-  by_cases hiS : i ∈ S <;> by_cases hiT : i ∈ T <;>
-    simp [sliceVertex, hiS, hiT]
-
-lemma sliceVertex_injective {k N : ℕ} (A : CubeSliceAnchor k N)
-    {S T : Finset (Fin k)} {hS : S.card = A.m} {hT : T.card = A.m}
-    (h : sliceVertex A S hS = sliceVertex A T hT) :
-    S = T := by
-  classical
-  apply Finset.ext
-  intro i
-  by_cases hiS : i ∈ S
-  · by_cases hiT : i ∈ T
-    · simp [hiS, hiT]
-    · have hcoord := congrArg (fun a : simplexGrid (n := Fin k) N => a.1 i) h
-      simp [sliceVertex, hiS, hiT] at hcoord
-  · by_cases hiT : i ∈ T
-    · have hcoord := congrArg (fun a : simplexGrid (n := Fin k) N => a.1 i) h
-      simp [sliceVertex, hiS, hiT] at hcoord
-    · simp [hiS, hiT]
-
-lemma sliceVertex_insert_erase_eq_transfer {k N : ℕ} [NeZero k]
-    (A : CubeSliceAnchor k N) {S : Finset (Fin k)} (hS : S.card = A.m)
-    {i j : Fin k} (hij : i ≠ j) (hiS : i ∈ S) (hjS : j ∉ S)
-    {hT : (insert j (S.erase i)).card = A.m} :
-    sliceVertex A (insert j (S.erase i)) hT =
-      transfer (n := Fin k) (sliceVertex A S hS) hij (by
-        rw [sliceVertex_apply]
-        simp [hiS]) := by
-  apply Subtype.ext
-  funext l
-  by_cases hli : l = i
-  · subst l
-    simp [sliceVertex, hij, hiS]
-  · by_cases hlj : l = j
-    · subst l
-      simp [sliceVertex, hjS]
-    · have hli' : l ≠ i := hli
-      have hlj' : l ≠ j := hlj
-      simp [sliceVertex, hli', hlj']
-
-/-- The ordered multiset union of two subsets of `Fin k`, used in the sorted-subset
-description of the hypersimplex alcove triangulation. -/
-noncomputable def sortedUnionList {k : ℕ} (S T : Finset (Fin k)) : List (Fin k) :=
-  Multiset.sort (S.val + T.val)
-
-/-- Alternating half of the sorted multiset union.  With zero-indexing, parity `0` is the
-first, third, ... entries and parity `1` is the second, fourth, ... entries. -/
-noncomputable def sortedAlternatingPart {k : ℕ} (parity : ℕ)
-    (S T : Finset (Fin k)) : Finset (Fin k) :=
-  (((sortedUnionList S T).zipIdx.filter fun p => decide (p.2 % 2 = parity)).map
-      fun p => p.1).toFinset
-
-/-- Sturmfels sortedness for a pair of subsets: after sorting the multiset union and
-splitting alternating entries, the two resulting sets are the original two sets, in either
-order.  This is the finite combinatorial predicate for hypersimplex alcoves. -/
-def SortedSubsetPair {k : ℕ} (S T : Finset (Fin k)) : Prop :=
-  (S = sortedAlternatingPart 0 S T ∧ T = sortedAlternatingPart 1 S T) ∨
-    (S = sortedAlternatingPart 1 S T ∧ T = sortedAlternatingPart 0 S T)
-
-structure HypersimplexAlcove (k m : ℕ) where
-  verts : Finset (Finset (Fin k))
-  card_verts : verts.card = k
-  each_card : ∀ S ∈ verts, S.card = m
-  pairwise_sorted : ∀ ⦃S : Finset (Fin k)⦄, S ∈ verts →
-    ∀ ⦃T : Finset (Fin k)⦄, T ∈ verts → SortedSubsetPair S T
-  maximal_sorted : ∀ T : Finset (Fin k), T.card = m →
-    (∀ S ∈ verts, SortedSubsetPair S T) → T ∈ verts
-
-namespace HypersimplexAlcove
-
-noncomputable instance instFintype (k m : ℕ) :
-    Fintype (HypersimplexAlcove k m) := by
-  classical
-  refine Fintype.ofEquiv
-    {verts : Finset (Finset (Fin k)) //
-      verts.card = k ∧
-        (∀ S ∈ verts, S.card = m) ∧
-        (∀ ⦃S : Finset (Fin k)⦄, S ∈ verts →
-          ∀ ⦃T : Finset (Fin k)⦄, T ∈ verts → SortedSubsetPair S T) ∧
-        (∀ T : Finset (Fin k), T.card = m →
-          (∀ S ∈ verts, SortedSubsetPair S T) → T ∈ verts)} ?_
-  refine
-    { toFun := fun p =>
-        { verts := p.1
-          card_verts := p.2.1
-          each_card := p.2.2.1
-          pairwise_sorted := p.2.2.2.1
-          maximal_sorted := p.2.2.2.2 }
-      invFun := fun A =>
-        ⟨A.verts, A.card_verts, A.each_card, A.pairwise_sorted, A.maximal_sorted⟩
-      left_inv := ?_
-      right_inv := ?_ }
-  · intro p
-    cases p
-    rfl
-  · intro A
-    cases A
-    rfl
-
-lemma nonempty {k m : ℕ} [NeZero k] (A : HypersimplexAlcove k m) :
-    A.verts.Nonempty := by
-  apply Finset.card_pos.mp
-  rw [A.card_verts]
-  exact Nat.pos_of_ne_zero (NeZero.ne k)
-
-noncomputable def baseSubset {k m : ℕ} [NeZero k]
-    (A : HypersimplexAlcove k m) : {S // S ∈ A.verts} :=
-  ⟨Classical.choose A.nonempty, Classical.choose_spec A.nonempty⟩
-
-lemma baseSubset_mem {k m : ℕ} [NeZero k] (A : HypersimplexAlcove k m) :
-    (A.baseSubset).1 ∈ A.verts :=
-  (A.baseSubset).2
-
-lemma baseSubset_card {k m : ℕ} [NeZero k] (A : HypersimplexAlcove k m) :
-    (A.baseSubset).1.card = m :=
-  A.each_card (A.baseSubset).1 A.baseSubset_mem
-
-lemma sorted_of_mem {k m : ℕ} (A : HypersimplexAlcove k m)
-    {S T : Finset (Fin k)} (hS : S ∈ A.verts) (hT : T ∈ A.verts) :
-    SortedSubsetPair S T :=
-  A.pairwise_sorted hS hT
-
-lemma mem_of_sorted_with_all {k m : ℕ} (A : HypersimplexAlcove k m)
-    {T : Finset (Fin k)} (hT : T.card = m)
-    (hsorted : ∀ S ∈ A.verts, SortedSubsetPair S T) :
-    T ∈ A.verts :=
-  A.maximal_sorted T hT hsorted
-
-end HypersimplexAlcove
-
-structure AlcoveCell (k N : ℕ) [NeZero k] where
-  anchor : CubeSliceAnchor k N
-  alcove : HypersimplexAlcove k anchor.m
-
-/--
-An implementation-facing presentation of hypersimplex alcoves.
-
-`HypersimplexAlcove` is semantic: a maximal sorted finset of vertices.  This chart system keeps
-named vertices and a named neighbor across each facet, which is the data needed to construct the
-global door pairing without reproving the classification of sorted collections from scratch.
--/
-structure HypersimplexAlcoveChartSystem (k : ℕ) [NeZero k] where
-  Chart : ℕ → Type*
-  fintypeChart : ∀ m : ℕ, Fintype (Chart m)
-  decidableEqChart : ∀ m : ℕ, DecidableEq (Chart m)
-  toAlcove : ∀ {m : ℕ}, Chart m → HypersimplexAlcove k m
-  vertex : ∀ {m : ℕ}, Chart m → Fin k → Finset (Fin k)
-  vertex_mem :
-    ∀ {m : ℕ} (C : Chart m) (q : Fin k), vertex C q ∈ (toAlcove C).verts
-  verts_eq_image :
-    ∀ {m : ℕ} (C : Chart m),
-      (toAlcove C).verts = (Finset.univ : Finset (Fin k)).image (vertex C)
-  vertex_injective :
-    ∀ {m : ℕ} (C : Chart m), Function.Injective (vertex C)
-  neighbor : ∀ {m : ℕ}, Chart m → Fin k → Option (Chart m)
-  neighbor_shares_facet :
-    ∀ {m : ℕ} (C : Chart m) (q : Fin k) (D : Chart m),
-      neighbor C q = some D →
-        ∃ q' : Fin k,
-          (toAlcove C).verts.erase (vertex C q) =
-            (toAlcove D).verts.erase (vertex D q')
-  neighbor_ne :
-    ∀ {m : ℕ} (C : Chart m) (q : Fin k) (D : Chart m),
-      neighbor C q = some D → D ≠ C
-  neighbor_involutive :
-    ∀ {m : ℕ} (C : Chart m) (q : Fin k) (D : Chart m),
-      neighbor C q = some D → ∃ q' : Fin k, neighbor D q' = some C
-
-structure ChartAlcoveCell (k N : ℕ) [NeZero k]
-    (Sys : HypersimplexAlcoveChartSystem k) where
-  anchor : CubeSliceAnchor k N
-  chart : Sys.Chart anchor.m
-
-namespace AlcoveCell
-
-noncomputable instance instFintype (k N : ℕ) [NeZero k] :
-    Fintype (AlcoveCell k N) := by
-  classical
-  refine Fintype.ofEquiv (Σ A : CubeSliceAnchor k N, HypersimplexAlcove k A.m) ?_
-  refine
-    { toFun := fun p => ⟨p.1, p.2⟩
-      invFun := fun cell => ⟨cell.anchor, cell.alcove⟩
-      left_inv := ?_
-      right_inv := ?_ }
-  · intro p
-    cases p
-    rfl
-  · intro cell
-    cases cell
-    rfl
-
-noncomputable instance instDecidableEq (k N : ℕ) [NeZero k] :
-    DecidableEq (AlcoveCell k N) :=
-  Classical.decEq _
-
-noncomputable def verts {k N : ℕ} [NeZero k] (cell : AlcoveCell k N) :
-    Finset (simplexGrid (n := Fin k) N) :=
-  cell.alcove.verts.attach.image fun S =>
-    sliceVertex cell.anchor S.1 (cell.alcove.each_card S.1 S.2)
-
-lemma mem_verts {k N : ℕ} [NeZero k] (cell : AlcoveCell k N)
-    {a : simplexGrid (n := Fin k) N} :
-    a ∈ cell.verts ↔
-      ∃ S : Finset (Fin k), ∃ hS : S ∈ cell.alcove.verts,
-        sliceVertex cell.anchor S (cell.alcove.each_card S hS) = a := by
-  classical
-  simp [verts]
-
-lemma card_verts {k N : ℕ} [NeZero k] (cell : AlcoveCell k N) :
-    cell.verts.card = Fintype.card (Fin k) := by
-  classical
-  rw [verts]
-  have hinj :
-      Function.Injective
-        (fun S : {S // S ∈ cell.alcove.verts} =>
-          sliceVertex cell.anchor S.1 (cell.alcove.each_card S.1 S.2)) := by
-    intro S T h
-    apply Subtype.ext
-    exact sliceVertex_injective cell.anchor h
-  rw [Finset.card_image_of_injective _ hinj]
-  rw [Finset.card_attach, cell.alcove.card_verts]
-  simp
-
-noncomputable def base {k N : ℕ} [NeZero k] (cell : AlcoveCell k N) :
-    simplexGrid (n := Fin k) N :=
-  sliceVertex cell.anchor cell.alcove.baseSubset.1 cell.alcove.baseSubset_card
-
-lemma base_mem_verts {k N : ℕ} [NeZero k] (cell : AlcoveCell k N) :
-    cell.base ∈ cell.verts := by
-  classical
-  rw [mem_verts]
-  exact ⟨cell.alcove.baseSubset.1, cell.alcove.baseSubset_mem, rfl⟩
-
-noncomputable def toTopCell {k N : ℕ} [NeZero k] (cell : AlcoveCell k N) :
-    TopCell (n := Fin k) N where
-  verts := cell.verts
-  base := cell.base
-  close := by
-    intro a ha
-    rw [mem_verts] at ha
-    obtain ⟨S, hS, rfl⟩ := ha
-    exact unitClose_sliceVertex_sliceVertex cell.anchor
-      (cell.alcove.each_card S hS) cell.alcove.baseSubset_card
-  card_verts := cell.card_verts
-
-@[simp]
-lemma toTopCell_verts {k N : ℕ} [NeZero k] (cell : AlcoveCell k N) :
-    cell.toTopCell.verts = cell.verts :=
-  rfl
-
-@[simp]
-lemma toTopCell_base {k N : ℕ} [NeZero k] (cell : AlcoveCell k N) :
-    cell.toTopCell.base = cell.base :=
-  rfl
-
-noncomputable def facetErasing {k N : ℕ} [NeZero k] (cell : AlcoveCell k N)
-    (S : Finset (Fin k)) (hS : S ∈ cell.alcove.verts) :
-    Finset (simplexGrid (n := Fin k) N) :=
-  cell.verts.erase (sliceVertex cell.anchor S (cell.alcove.each_card S hS))
-
-lemma erasedVertex_mem_verts {k N : ℕ} [NeZero k] (cell : AlcoveCell k N)
-    {S : Finset (Fin k)} (hS : S ∈ cell.alcove.verts) :
-    sliceVertex cell.anchor S (cell.alcove.each_card S hS) ∈ cell.verts := by
-  classical
-  rw [mem_verts]
-  exact ⟨S, hS, rfl⟩
-
-lemma facetErasing_mem_facets {k N : ℕ} [NeZero k] (cell : AlcoveCell k N)
-    {S : Finset (Fin k)} (hS : S ∈ cell.alcove.verts) :
-    cell.facetErasing S hS ∈ cell.toTopCell.facets := by
-  classical
-  rw [TopCell.mem_facets]
-  constructor
-  · intro a ha
-    exact Finset.erase_subset _ _ ha
-  · exact Finset.card_erase_add_one (cell.erasedVertex_mem_verts hS)
-
-lemma mem_facetErasing {k N : ℕ} [NeZero k] (cell : AlcoveCell k N)
-    {S : Finset (Fin k)} (hS : S ∈ cell.alcove.verts)
-    {a : simplexGrid (n := Fin k) N} :
-    a ∈ cell.facetErasing S hS ↔
-      ∃ T : Finset (Fin k), ∃ hT : T ∈ cell.alcove.verts.erase S,
-        sliceVertex cell.anchor T
-          (cell.alcove.each_card T (Finset.erase_subset S cell.alcove.verts hT)) = a := by
-  classical
-  constructor
-  · intro ha
-    rw [facetErasing, Finset.mem_erase] at ha
-    obtain ⟨ha_ne, ha_cell⟩ := ha
-    rw [mem_verts] at ha_cell
-    obtain ⟨T, hT, hTa⟩ := ha_cell
-    have hTS : T ≠ S := by
-      intro h
-      subst T
-      exact ha_ne hTa.symm
-    refine ⟨T, ?_, ?_⟩
-    · rw [Finset.mem_erase]
-      exact ⟨hTS, hT⟩
-    · simpa using hTa
-  · rintro ⟨T, hT, hTa⟩
-    rw [facetErasing, Finset.mem_erase]
-    have hTmem : T ∈ cell.alcove.verts := Finset.erase_subset S cell.alcove.verts hT
+  · rw [isDoor,isCell,isDominant]
     constructor
-    · intro ha_eq
-      have hverts :
-          sliceVertex cell.anchor T (cell.alcove.each_card T hTmem) =
-            sliceVertex cell.anchor S (cell.alcove.each_card S hS) := by
-        exact hTa.trans ha_eq
-      have hTS : T = S := sliceVertex_injective cell.anchor hverts
-      exact (Finset.mem_erase.mp hT).1 hTS
-    · rw [mem_verts]
-      exact ⟨T, hTmem, hTa⟩
-
-lemma facetErasing_eq_of_erase_eq {k N : ℕ} [NeZero k]
-    (cell cell' : AlcoveCell k N)
-    (hanchor : cell'.anchor = cell.anchor)
-    {S T : Finset (Fin k)}
-    (hS : S ∈ cell.alcove.verts) (hT : T ∈ cell'.alcove.verts)
-    (hfacet : cell.alcove.verts.erase S = cell'.alcove.verts.erase T) :
-    cell.facetErasing S hS = cell'.facetErasing T hT := by
-  classical
-  cases cell with
-  | mk A alc =>
-  cases cell' with
-  | mk A' alc' =>
-  dsimp at hanchor hS hT hfacet ⊢
-  subst A'
-  apply Finset.ext
-  intro a
-  rw [mem_facetErasing, mem_facetErasing]
-  constructor
-  · rintro ⟨U, hU, hUa⟩
-    have hU' : U ∈ alc'.verts.erase T := by
-      rwa [← hfacet]
-    refine ⟨U, hU', ?_⟩
-    simpa using hUa
-  · rintro ⟨U, hU, hUa⟩
-    have hU' : U ∈ alc.verts.erase S := by
-      rwa [hfacet]
-    refine ⟨U, hU', ?_⟩
-    simpa using hUa
-
-lemma mem_facets_iff_exists_facetErasing {k N : ℕ} [NeZero k]
-    (cell : AlcoveCell k N) {face : Finset (simplexGrid (n := Fin k) N)} :
-    face ∈ cell.toTopCell.facets ↔
-      ∃ S : Finset (Fin k), ∃ hS : S ∈ cell.alcove.verts,
-        face = cell.facetErasing S hS := by
-  classical
-  constructor
-  · intro hface
-    obtain ⟨a, ha_cell, hface_eq⟩ :=
-      (TopCell.mem_facets_iff_exists_erase (cell := cell.toTopCell)).mp hface
-    change a ∈ cell.verts at ha_cell
-    rw [mem_verts] at ha_cell
-    obtain ⟨S, hS, hSa⟩ := ha_cell
-    refine ⟨S, hS, ?_⟩
-    rw [facetErasing, hface_eq]
-    congr 1
-    exact hSa.symm
-  · rintro ⟨S, hS, rfl⟩
-    exact cell.facetErasing_mem_facets hS
-
-lemma mem_faceDoors_of_mem_facets_of_colors {k N : ℕ} [NeZero k]
-    {cell : AlcoveCell k N} {c : simplexGrid (n := Fin k) N → Fin k}
-    {r : Fin k} {face : Finset (simplexGrid (n := Fin k) N)}
-    (hfacet : face ∈ cell.toTopCell.facets)
-    (hcolors : face.image c = Finset.univ.erase r) :
-    face ∈ cell.toTopCell.faceDoors c r := by
-  classical
-  rw [TopCell.mem_facets] at hfacet
-  rw [TopCell.faceDoors, Finset.mem_filter]
-  exact ⟨Finset.mem_powerset.mpr hfacet.1, hfacet.2, hcolors⟩
-
-def IsAlcoveFacet {k N : ℕ} [NeZero k]
-    (F : Finset (simplexGrid (n := Fin k) N)) : Prop :=
-  ∃ cell : AlcoveCell k N, F ∈ cell.toTopCell.facets
-
-noncomputable def cellsIncidentToFacet {k N : ℕ} [NeZero k]
-    (F : Finset (simplexGrid (n := Fin k) N)) : Finset (AlcoveCell k N) :=
-  (Finset.univ : Finset (AlcoveCell k N)).filter fun cell =>
-    F ∈ cell.toTopCell.facets
-
-lemma mem_cellsIncidentToFacet {k N : ℕ} [NeZero k]
-    {F : Finset (simplexGrid (n := Fin k) N)} {cell : AlcoveCell k N} :
-    cell ∈ cellsIncidentToFacet F ↔ F ∈ cell.toTopCell.facets := by
-  classical
-  simp [cellsIncidentToFacet]
-
-lemma isAlcoveFacet_iff_nonempty_cellsIncidentToFacet {k N : ℕ} [NeZero k]
-    {F : Finset (simplexGrid (n := Fin k) N)} :
-    IsAlcoveFacet F ↔ (cellsIncidentToFacet F).Nonempty := by
-  classical
-  constructor
-  · rintro ⟨cell, hcell⟩
-    exact ⟨cell, (mem_cellsIncidentToFacet (F := F)).mpr hcell⟩
-  · rintro ⟨cell, hcell⟩
-    exact ⟨cell, (mem_cellsIncidentToFacet (F := F)).mp hcell⟩
-
-noncomputable def doorFacets {k N : ℕ} [NeZero k]
-    (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k) :
-    Finset (Finset (simplexGrid (n := Fin k) N)) :=
-  by
-    classical
-    exact Finset.univ.filter fun F =>
-      IsAlcoveFacet F ∧ F.image c = Finset.univ.erase r
-
-noncomputable def exteriorDoorFacets {k N : ℕ} [NeZero k]
-    (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k) :
-    Finset (Finset (simplexGrid (n := Fin k) N)) :=
-  by
-    classical
-    exact doorFacets c r |>.filter fun F => IsExteriorFacet (n := Fin k) F
-
-lemma mem_doorFacets {k N : ℕ} [NeZero k]
-    (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k)
-    {F : Finset (simplexGrid (n := Fin k) N)} :
-    F ∈ doorFacets c r ↔ IsAlcoveFacet F ∧ F.image c = Finset.univ.erase r := by
-  classical
-  simp [doorFacets]
-
-lemma mem_exteriorDoorFacets {k N : ℕ} [NeZero k]
-    (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k)
-    {F : Finset (simplexGrid (n := Fin k) N)} :
-    F ∈ exteriorDoorFacets c r ↔
-      F ∈ doorFacets c r ∧ IsExteriorFacet (n := Fin k) F := by
-  classical
-  simp [exteriorDoorFacets]
-
-noncomputable def doorIncidences {k N : ℕ} [NeZero k]
-    (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k) :
-    Finset (Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N)) :=
-  familyDoorIncidences (fun cell : AlcoveCell k N => cell.toTopCell) c r
-
-noncomputable def internalDoorIncidences {k N : ℕ} [NeZero k]
-    (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k) :
-    Finset (Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N)) :=
-  by
-    classical
-    exact (doorIncidences c r).filter fun incidence =>
-      ¬ IsExteriorFacet (n := Fin k) incidence.2
-
-noncomputable def exteriorDoorIncidences {k N : ℕ} [NeZero k]
-    (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k) :
-    Finset (Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N)) :=
-  by
-    classical
-    exact (doorIncidences c r).filter fun incidence =>
-      IsExteriorFacet (n := Fin k) incidence.2
-
-lemma mem_internalDoorIncidences {k N : ℕ} [NeZero k]
-    (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k)
-    {incidence : Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N)} :
-    incidence ∈ internalDoorIncidences c r ↔
-      incidence ∈ doorIncidences c r ∧ ¬ IsExteriorFacet (n := Fin k) incidence.2 := by
-  classical
-  simp [internalDoorIncidences]
-
-lemma mem_exteriorDoorIncidences {k N : ℕ} [NeZero k]
-    (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k)
-    {incidence : Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N)} :
-    incidence ∈ exteriorDoorIncidences c r ↔
-      incidence ∈ doorIncidences c r ∧ IsExteriorFacet (n := Fin k) incidence.2 := by
-  classical
-  simp [exteriorDoorIncidences]
-
-lemma face_mem_of_mem_doorIncidences {k N : ℕ} [NeZero k]
-    {c : simplexGrid (n := Fin k) N → Fin k} {r : Fin k}
-    {incidence : Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N)}
-    (hinc : incidence ∈ doorIncidences c r) :
-    incidence.2 ∈ (incidence.1.toTopCell).faceDoors c r := by
-  classical
-  simpa [doorIncidences] using
-    (mem_familyDoorIncidences
-      (fun cell : AlcoveCell k N => cell.toTopCell) c r).mp hinc
-
-lemma face_mem_facets_of_mem_doorIncidences {k N : ℕ} [NeZero k]
-    {c : simplexGrid (n := Fin k) N → Fin k} {r : Fin k}
-    {incidence : Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N)}
-    (hinc : incidence ∈ doorIncidences c r) :
-    incidence.2 ∈ incidence.1.toTopCell.facets := by
-  exact TopCell.faceDoors_subset_facets incidence.1.toTopCell c r
-    (face_mem_of_mem_doorIncidences hinc)
-
-lemma face_colors_of_mem_doorIncidences {k N : ℕ} [NeZero k]
-    {c : simplexGrid (n := Fin k) N → Fin k} {r : Fin k}
-    {incidence : Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N)}
-    (hinc : incidence ∈ doorIncidences c r) :
-    incidence.2.image c = Finset.univ.erase r := by
-  exact face_colors_of_mem_faceDoors (face_mem_of_mem_doorIncidences hinc)
-
-lemma face_mem_doorFacets_of_mem_doorIncidences {k N : ℕ} [NeZero k]
-    {c : simplexGrid (n := Fin k) N → Fin k} {r : Fin k}
-    {incidence : Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N)}
-    (hinc : incidence ∈ doorIncidences c r) :
-    incidence.2 ∈ doorFacets c r := by
-  rw [mem_doorFacets]
-  exact ⟨⟨incidence.1, face_mem_facets_of_mem_doorIncidences hinc⟩,
-    face_colors_of_mem_doorIncidences hinc⟩
-
-lemma face_mem_exteriorDoorFacets_of_mem_exteriorDoorIncidences {k N : ℕ} [NeZero k]
-    {c : simplexGrid (n := Fin k) N → Fin k} {r : Fin k}
-    {incidence : Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N)}
-    (hinc : incidence ∈ exteriorDoorIncidences c r) :
-    incidence.2 ∈ exteriorDoorFacets c r := by
-  rw [mem_exteriorDoorIncidences] at hinc
-  rw [mem_exteriorDoorFacets]
-  exact ⟨face_mem_doorFacets_of_mem_doorIncidences hinc.1, hinc.2⟩
-
-lemma boundary_coord_eq_missing_of_mem_exteriorDoorFacets {k N : ℕ} [NeZero k]
-    {c : simplexGrid (n := Fin k) N → Fin k} {r q : Fin k}
-    (hc : ∀ (a : simplexGrid (n := Fin k) N) (i : Fin k), a.1 i = 0 → c a ≠ i)
-    {F : Finset (simplexGrid (n := Fin k) N)}
-    (hF : F ∈ exteriorDoorFacets c r)
-    (hq : ∀ a ∈ F, a.1 q = 0) :
-    q = r := by
-  rw [mem_exteriorDoorFacets] at hF
-  rw [mem_doorFacets] at hF
-  exact boundary_coord_eq_missing_of_face_colors_erase hc hF.1.2 hq
-
-lemma boundary_coord_eq_missing_of_mem_exteriorDoorIncidences {k N : ℕ} [NeZero k]
-    {c : simplexGrid (n := Fin k) N → Fin k} {r q : Fin k}
-    (hc : ∀ (a : simplexGrid (n := Fin k) N) (i : Fin k), a.1 i = 0 → c a ≠ i)
-    {incidence : Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N)}
-    (hinc : incidence ∈ exteriorDoorIncidences c r)
-    (hq : ∀ a ∈ incidence.2, a.1 q = 0) :
-    q = r := by
-  rw [mem_exteriorDoorIncidences] at hinc
-  exact boundary_coord_eq_missing_of_face_colors_erase hc
-    (face_colors_of_mem_doorIncidences hinc.1) hq
-
-lemma face_subset_missing_boundary_of_mem_exteriorDoorIncidences {k N : ℕ} [NeZero k]
-    {c : simplexGrid (n := Fin k) N → Fin k} {r : Fin k}
-    (hc : ∀ (a : simplexGrid (n := Fin k) N) (i : Fin k), a.1 i = 0 → c a ≠ i)
-    {incidence : Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N)}
-    (hinc : incidence ∈ exteriorDoorIncidences c r) :
-    ∀ a ∈ incidence.2, a.1 r = 0 := by
-  rw [mem_exteriorDoorIncidences] at hinc
-  obtain ⟨q, hq⟩ := hinc.2
-  have hqr : q = r := boundary_coord_eq_missing_of_face_colors_erase hc
-    (face_colors_of_mem_doorIncidences hinc.1) hq
-  subst q
-  exact hq
-
-lemma doorIncidences_eq_internal_union_exterior {k N : ℕ} [NeZero k]
-    (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k) :
-    doorIncidences c r =
-      internalDoorIncidences c r ∪ exteriorDoorIncidences c r := by
-  classical
-  apply Finset.ext
-  intro incidence
-  by_cases hex : IsExteriorFacet (n := Fin k) incidence.2 <;>
-    simp [internalDoorIncidences, exteriorDoorIncidences, hex]
-
-lemma disjoint_internalDoorIncidences_exterior {k N : ℕ} [NeZero k]
-    (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k) :
-    Disjoint (internalDoorIncidences c r) (exteriorDoorIncidences c r) := by
-  classical
-  rw [Finset.disjoint_left]
-  intro incidence hint hext
-  rw [mem_internalDoorIncidences] at hint
-  rw [mem_exteriorDoorIncidences] at hext
-  exact hint.2 hext.2
-
-lemma odd_card_doorIncidences_of_internal_even_exterior_odd {k N : ℕ} [NeZero k]
-    (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k)
-    (hinternal : Even (internalDoorIncidences c r).card)
-    (hexterior : Odd (exteriorDoorIncidences c r).card) :
-    Odd (doorIncidences c r).card := by
-  exact odd_card_familyDoorIncidences_of_even_odd_partition
-    (fun cell : AlcoveCell k N => cell.toTopCell) c r
-    (internalDoorIncidences c r) (exteriorDoorIncidences c r)
-    (doorIncidences_eq_internal_union_exterior c r)
-    (disjoint_internalDoorIncidences_exterior c r)
-    hinternal hexterior
-
-lemma exists_fullyLabeledUnitCluster_of_internal_even_exterior_odd {k N : ℕ} [NeZero k]
-    (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k)
-    (hinternal : Even (internalDoorIncidences c r).card)
-    (hexterior : Odd (exteriorDoorIncidences c r).card) :
-    ∃ base : simplexGrid (n := Fin k) N,
-      FullyLabeledUnitCluster (n := Fin k) c base := by
-  exact exists_fullyLabeledUnitCluster_of_odd_card_familyDoorIncidences
-    (fun cell : AlcoveCell k N => cell.toTopCell) c r
-    (odd_card_doorIncidences_of_internal_even_exterior_odd c r hinternal hexterior)
-
-lemma even_card_internalDoorIncidences_of_fixedPointFree_mate {k N : ℕ} [NeZero k]
-    (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k)
-    (mate :
-      (Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N)) →
-        (Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N)))
-    (hmem : ∀ incidence ∈ internalDoorIncidences c r,
-      mate incidence ∈ internalDoorIncidences c r)
-    (hinv : ∀ incidence ∈ internalDoorIncidences c r,
-      mate (mate incidence) = incidence)
-    (hfree : ∀ incidence ∈ internalDoorIncidences c r,
-      mate incidence ≠ incidence) :
-    Even (internalDoorIncidences c r).card := by
-  exact even_card_finset_of_fixedPointFree_involution
-    (internalDoorIncidences c r) mate hmem hinv hfree
-
-lemma exists_fullyLabeledUnitCluster_of_internal_mate_exterior_odd {k N : ℕ} [NeZero k]
-    (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k)
-    (mate :
-      (Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N)) →
-        (Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N)))
-    (hmem : ∀ incidence ∈ internalDoorIncidences c r,
-      mate incidence ∈ internalDoorIncidences c r)
-    (hinv : ∀ incidence ∈ internalDoorIncidences c r,
-      mate (mate incidence) = incidence)
-    (hfree : ∀ incidence ∈ internalDoorIncidences c r,
-      mate incidence ≠ incidence)
-    (hexterior : Odd (exteriorDoorIncidences c r).card) :
-    ∃ base : simplexGrid (n := Fin k) N,
-      FullyLabeledUnitCluster (n := Fin k) c base := by
-  exact exists_fullyLabeledUnitCluster_of_internal_even_exterior_odd c r
-    (even_card_internalDoorIncidences_of_fixedPointFree_mate
-      c r mate hmem hinv hfree)
-    hexterior
-
-structure IncidenceParityCertificate {k N : ℕ} [NeZero k]
-    (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k) where
-  mate :
-    (Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N)) →
-      (Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N))
-  mate_mem : ∀ incidence ∈ internalDoorIncidences c r,
-    mate incidence ∈ internalDoorIncidences c r
-  mate_involutive : ∀ incidence ∈ internalDoorIncidences c r,
-    mate (mate incidence) = incidence
-  mate_fixedPointFree : ∀ incidence ∈ internalDoorIncidences c r,
-    mate incidence ≠ incidence
-  exterior_odd : Odd (exteriorDoorIncidences c r).card
-
-structure InteriorFacetPairingData (k N : ℕ) [NeZero k] where
-  other :
-    (cell : AlcoveCell k N) →
-      (face : Finset (simplexGrid (n := Fin k) N)) → AlcoveCell k N
-  other_mem :
-    ∀ (cell : AlcoveCell k N) (face : Finset (simplexGrid (n := Fin k) N))
-      (_hfacet : face ∈ cell.toTopCell.facets)
-      (_hint : ¬ IsExteriorFacet (n := Fin k) face),
-      face ∈ (other cell face).toTopCell.facets
-  other_ne :
-    ∀ (cell : AlcoveCell k N) (face : Finset (simplexGrid (n := Fin k) N))
-      (_hfacet : face ∈ cell.toTopCell.facets)
-      (_hint : ¬ IsExteriorFacet (n := Fin k) face),
-      other cell face ≠ cell
-  other_involutive :
-    ∀ (cell : AlcoveCell k N) (face : Finset (simplexGrid (n := Fin k) N))
-      (_hfacet : face ∈ cell.toTopCell.facets)
-      (_hint : ¬ IsExteriorFacet (n := Fin k) face),
-      other (other cell face) face = cell
-  incidence_mate :
-    (simplexGrid (n := Fin k) N → Fin k) → Fin k →
-      (Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N)) →
-        (Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N))
-  incidence_mate_mem :
-    ∀ (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k)
-      (incidence : Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N)),
-      incidence ∈ internalDoorIncidences c r →
-        incidence_mate c r incidence ∈ internalDoorIncidences c r
-  incidence_mate_involutive :
-    ∀ (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k)
-      (incidence : Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N)),
-      incidence ∈ internalDoorIncidences c r →
-        incidence_mate c r (incidence_mate c r incidence) = incidence
-  incidence_mate_fixedPointFree :
-    ∀ (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k)
-      (incidence : Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N)),
-      incidence ∈ internalDoorIncidences c r →
-        incidence_mate c r incidence ≠ incidence
-
-structure InteriorFacetNeighborData (k N : ℕ) [NeZero k] where
-  other :
-    (cell : AlcoveCell k N) →
-      (face : Finset (simplexGrid (n := Fin k) N)) → AlcoveCell k N
-  other_mem :
-    ∀ (cell : AlcoveCell k N) (face : Finset (simplexGrid (n := Fin k) N))
-      (_hfacet : face ∈ cell.toTopCell.facets)
-      (_hint : ¬ IsExteriorFacet (n := Fin k) face),
-      face ∈ (other cell face).toTopCell.facets
-  other_ne :
-    ∀ (cell : AlcoveCell k N) (face : Finset (simplexGrid (n := Fin k) N))
-      (_hfacet : face ∈ cell.toTopCell.facets)
-      (_hint : ¬ IsExteriorFacet (n := Fin k) face),
-      other cell face ≠ cell
-  other_involutive :
-    ∀ (cell : AlcoveCell k N) (face : Finset (simplexGrid (n := Fin k) N))
-      (_hfacet : face ∈ cell.toTopCell.facets)
-      (_hint : ¬ IsExteriorFacet (n := Fin k) face),
-      other (other cell face) face = cell
-
-noncomputable def InteriorFacetNeighborData.incidenceMate {k N : ℕ} [NeZero k]
-    (D : InteriorFacetNeighborData k N)
-    (_c : simplexGrid (n := Fin k) N → Fin k) (_r : Fin k)
-    (incidence : Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N)) :
-    Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N) :=
-  ⟨D.other incidence.1 incidence.2, incidence.2⟩
-
-lemma InteriorFacetNeighborData.incidenceMate_mem {k N : ℕ} [NeZero k]
-    (D : InteriorFacetNeighborData k N)
-    (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k)
-    (incidence : Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N))
-    (hinc : incidence ∈ internalDoorIncidences c r) :
-    D.incidenceMate c r incidence ∈ internalDoorIncidences c r := by
-  classical
-  rw [mem_internalDoorIncidences] at hinc ⊢
-  refine ⟨?_, hinc.2⟩
-  rw [doorIncidences, mem_familyDoorIncidences]
-  rw [doorIncidences, mem_familyDoorIncidences] at hinc
-  exact mem_faceDoors_of_mem_facets_of_colors
-    (D.other_mem incidence.1 incidence.2
-      (TopCell.faceDoors_subset_facets incidence.1.toTopCell c r hinc.1) hinc.2)
-    (face_colors_of_mem_faceDoors hinc.1)
-
-lemma InteriorFacetNeighborData.incidenceMate_involutive {k N : ℕ} [NeZero k]
-    (D : InteriorFacetNeighborData k N)
-    (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k)
-    (incidence : Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N))
-    (hinc : incidence ∈ internalDoorIncidences c r) :
-    D.incidenceMate c r (D.incidenceMate c r incidence) = incidence := by
-  classical
-  rw [mem_internalDoorIncidences] at hinc
-  rw [doorIncidences, mem_familyDoorIncidences] at hinc
-  apply Sigma.ext
-  · exact D.other_involutive incidence.1 incidence.2
-      (TopCell.faceDoors_subset_facets incidence.1.toTopCell c r hinc.1) hinc.2
-  · simp [incidenceMate]
-
-lemma InteriorFacetNeighborData.incidenceMate_fixedPointFree {k N : ℕ} [NeZero k]
-    (D : InteriorFacetNeighborData k N)
-    (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k)
-    (incidence : Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N))
-    (hinc : incidence ∈ internalDoorIncidences c r) :
-    D.incidenceMate c r incidence ≠ incidence := by
-  classical
-  intro h
-  rw [mem_internalDoorIncidences] at hinc
-  rw [doorIncidences, mem_familyDoorIncidences] at hinc
-  have hcell : D.other incidence.1 incidence.2 = incidence.1 := by
-    exact congrArg Sigma.fst h
-  exact D.other_ne incidence.1 incidence.2
-    (TopCell.faceDoors_subset_facets incidence.1.toTopCell c r hinc.1) hinc.2 hcell
-
-noncomputable def InteriorFacetNeighborData.toInteriorFacetPairingData {k N : ℕ}
-    [NeZero k] (D : InteriorFacetNeighborData k N) : InteriorFacetPairingData k N where
-  other := D.other
-  other_mem := D.other_mem
-  other_ne := D.other_ne
-  other_involutive := D.other_involutive
-  incidence_mate := D.incidenceMate
-  incidence_mate_mem := D.incidenceMate_mem
-  incidence_mate_involutive := D.incidenceMate_involutive
-  incidence_mate_fixedPointFree := D.incidenceMate_fixedPointFree
-
-structure ExteriorDoorParityData (k N : ℕ) [NeZero k] where
-  exterior_card_eq :
-    ∀ (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k),
-      (exteriorDoorIncidences c r).card = (exteriorDoorFacets c r).card
-  exterior_facets_odd :
-    ∀ (_hcardN : k < N)
-      (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k),
-      (∀ (a : simplexGrid (n := Fin k) N) (i : Fin k), a.1 i = 0 → c a ≠ i) →
-        Odd (exteriorDoorFacets c r).card
-
-structure AlcoveSpernerData (k N : ℕ) [NeZero k] where
-  interior : InteriorFacetPairingData k N
-  exterior : ExteriorDoorParityData k N
-
-lemma exists_fullyLabeledUnitCluster_of_incidenceParityCertificate {k N : ℕ} [NeZero k]
-    {c : simplexGrid (n := Fin k) N → Fin k} {r : Fin k}
-    (cert : IncidenceParityCertificate c r) :
-    ∃ base : simplexGrid (n := Fin k) N,
-      FullyLabeledUnitCluster (n := Fin k) c base := by
-  exact exists_fullyLabeledUnitCluster_of_internal_mate_exterior_odd c r
-    cert.mate cert.mate_mem cert.mate_involutive cert.mate_fixedPointFree cert.exterior_odd
-
-lemma nonempty_alcoveSpernerData_of_alcove_pseudomanifold {k N : ℕ} [NeZero k] :
-    Nonempty (AlcoveSpernerData k N) := by
-  /-
-  Core finite combinatorial theorem for the alcove/cube-slice triangulation:
-  * every non-boundary facet has a paired adjacent cell;
-  * exterior facets are counted once;
-  * exterior Sperner doors have odd cardinality by boundary recursion.
-  -/
-  sorry
-
-lemma nonempty_interiorFacetPairingData_of_alcove_pseudomanifold {k N : ℕ} [NeZero k] :
-    Nonempty (InteriorFacetPairingData k N) := by
-  obtain ⟨D⟩ := nonempty_alcoveSpernerData_of_alcove_pseudomanifold (k := k) (N := N)
-  exact ⟨D.interior⟩
-
-lemma nonempty_exteriorDoorParityData_of_alcove_boundary {k N : ℕ} [NeZero k] :
-    Nonempty (ExteriorDoorParityData k N) := by
-  obtain ⟨D⟩ := nonempty_alcoveSpernerData_of_alcove_pseudomanifold (k := k) (N := N)
-  exact ⟨D.exterior⟩
-
-/--
-Interior pseudomanifold statement for the alcove triangulation of all cube slices.
-
-For every non-exterior door incidence, the same facet is incident to a unique cell on the other
-side.  Packaged as a fixed-point-free involution because this is exactly the data needed for the
-finite parity argument.
- -/
-lemma exists_internalDoorIncidence_mate_of_alcove_facets {k N : ℕ} [NeZero k]
-    (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k) :
-    ∃ mate :
-        (Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N)) →
-          (Σ _cell : AlcoveCell k N, Finset (simplexGrid (n := Fin k) N)),
-      (∀ incidence ∈ internalDoorIncidences c r,
-        mate incidence ∈ internalDoorIncidences c r) ∧
-      (∀ incidence ∈ internalDoorIncidences c r,
-        mate (mate incidence) = incidence) ∧
-      (∀ incidence ∈ internalDoorIncidences c r,
-        mate incidence ≠ incidence) := by
-  classical
-  obtain ⟨D⟩ := nonempty_interiorFacetPairingData_of_alcove_pseudomanifold (k := k) (N := N)
-  exact ⟨D.incidence_mate c r, D.incidence_mate_mem c r,
-    D.incidence_mate_involutive c r, D.incidence_mate_fixedPointFree c r⟩
-
-lemma card_exteriorDoorIncidences_eq_card_exteriorDoorFacets_of_alcove_boundary {k N : ℕ}
-    [NeZero k]
-    (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k) :
-    (exteriorDoorIncidences c r).card = (exteriorDoorFacets c r).card := by
-  classical
-  obtain ⟨D⟩ := nonempty_exteriorDoorParityData_of_alcove_boundary (k := k) (N := N)
-  exact D.exterior_card_eq c r
-
-lemma odd_card_exteriorDoorFacets_of_boundary_recursion {k N : ℕ} [NeZero k]
-    (hcardN : k < N)
-    (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k)
-    (hc : ∀ (a : simplexGrid (n := Fin k) N) (i : Fin k), a.1 i = 0 → c a ≠ i) :
-    Odd (exteriorDoorFacets c r).card := by
-  classical
-  obtain ⟨D⟩ := nonempty_exteriorDoorParityData_of_alcove_boundary (k := k) (N := N)
-  exact D.exterior_facets_odd hcardN c r hc
-
-/--
-Boundary parity statement for the alcove triangulation.
-
-Exterior `r`-doors are forced by the Sperner boundary condition to lie on the face `x_r = 0`.
-After deleting that coordinate and color, they are exactly the full facets in the boundary
-simplex, so their number is odd by the lower-dimensional Sperner parity recursion.
--/
-lemma odd_card_exteriorDoorIncidences_of_alcove_boundary {k N : ℕ} [NeZero k]
-    (hcardN : k < N)
-    (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k)
-    (hc : ∀ (a : simplexGrid (n := Fin k) N) (i : Fin k), a.1 i = 0 → c a ≠ i) :
-    Odd (exteriorDoorIncidences c r).card := by
-  rw [card_exteriorDoorIncidences_eq_card_exteriorDoorFacets_of_alcove_boundary]
-  exact odd_card_exteriorDoorFacets_of_boundary_recursion hcardN c r hc
-
-lemma exists_incidenceParityCertificate_of_alcove_triangulation {k N : ℕ} [NeZero k]
-    (hcardN : k < N)
-    (c : simplexGrid (n := Fin k) N → Fin k)
-    (hc : ∀ (a : simplexGrid (n := Fin k) N) (i : Fin k), a.1 i = 0 → c a ≠ i) :
-    ∃ r : Fin k, Nonempty (IncidenceParityCertificate c r) := by
-  classical
-  let r : Fin k := 0
-  obtain ⟨mate, hmem, hinv, hfree⟩ :=
-    exists_internalDoorIncidence_mate_of_alcove_facets c r
-  exact ⟨r, ⟨
-    { mate := mate
-      mate_mem := hmem
-      mate_involutive := hinv
-      mate_fixedPointFree := hfree
-      exterior_odd := odd_card_exteriorDoorIncidences_of_alcove_boundary
-        hcardN c r hc }⟩⟩
-
-lemma exists_fin_card_incidenceParityCertificate_of_card_lt
-    {n : Type*} [Fintype n] [DecidableEq n] [Nonempty n]
-    {N : ℕ} (hcardN : Fintype.card n < N) :
-    ∀ cfin : simplexGrid (n := Fin (Fintype.card n)) N → Fin (Fintype.card n),
-      (∀ (a : simplexGrid (n := Fin (Fintype.card n)) N) (i : Fin (Fintype.card n)),
-        a.1 i = 0 → cfin a ≠ i) →
-        ∃ r : Fin (Fintype.card n), Nonempty (IncidenceParityCertificate cfin r) := by
-  intro cfin hcfin
-  have hk : Fintype.card n ≠ 0 := Fintype.card_ne_zero
-  letI : NeZero (Fintype.card n) := ⟨hk⟩
-  exact exists_incidenceParityCertificate_of_alcove_triangulation hcardN cfin hcfin
-
-end AlcoveCell
-
-/--
-Global implementation-facing presentation of the alcove triangulation of the whole integer
-simplex.
-
-This is the interface wanted for the circuit/Stanley/Lam-Postnikov model.  Unlike
-`HypersimplexAlcoveChartSystem`, the neighbor operation is allowed to move between different
-cube-slice anchors.  That matters for facets on cube walls: they are paired with a cell in a
-neighboring slice unless they are genuine exterior facets of the global simplex.
--/
-structure GlobalAlcoveChartSystem (k N : ℕ) [NeZero k] where
-  Code : Type*
-  fintypeCode : Fintype Code
-  decidableEqCode : DecidableEq Code
-  toCell : Code → AlcoveCell k N
-  codeOf : AlcoveCell k N → Code
-  toCell_codeOf : ∀ cell : AlcoveCell k N, toCell (codeOf cell) = cell
-  codeOf_toCell : ∀ code : Code, codeOf (toCell code) = code
-  vertex : Code → Fin k → simplexGrid (n := Fin k) N
-  vertex_mem :
-    ∀ (C : Code) (q : Fin k), vertex C q ∈ (toCell C).toTopCell.verts
-  verts_eq_image :
-    ∀ C : Code,
-      (toCell C).toTopCell.verts = (Finset.univ : Finset (Fin k)).image (vertex C)
-  vertex_injective :
-    ∀ C : Code, Function.Injective (vertex C)
-  facet_index_exists :
-    ∀ (C : Code) (face : Finset (simplexGrid (n := Fin k) N)),
-      face ∈ (toCell C).toTopCell.facets →
-        ∃ q : Fin k, face = (toCell C).toTopCell.verts.erase (vertex C q)
-  neighbor : Code → Fin k → Option Code
-  neighbor_shares_facet :
-    ∀ (C : Code) (q : Fin k) (D : Code),
-      neighbor C q = some D →
-        ∃ q' : Fin k,
-          (toCell C).toTopCell.verts.erase (vertex C q) =
-            (toCell D).toTopCell.verts.erase (vertex D q')
-  neighbor_none_exterior :
-    ∀ (C : Code) (q : Fin k),
-      neighbor C q = none →
-        IsExteriorFacet (n := Fin k) ((toCell C).toTopCell.verts.erase (vertex C q))
-  neighbor_ne_cell :
-    ∀ (C : Code) (q : Fin k) (D : Code),
-      neighbor C q = some D → toCell D ≠ toCell C
-  neighbor_back_to_cell :
-    ∀ (C D E : Code) (q q' : Fin k),
-      neighbor C q = some D →
-        (toCell C).toTopCell.verts.erase (vertex C q) =
-          (toCell D).toTopCell.verts.erase (vertex D q') →
-        neighbor D q' = some E →
-          toCell E = toCell C
-
-namespace GlobalAlcoveChartSystem
-
-noncomputable instance instFintypeCode {k N : ℕ} [NeZero k]
-    (Sys : GlobalAlcoveChartSystem k N) : Fintype Sys.Code :=
-  Sys.fintypeCode
-
-noncomputable instance instDecidableEqCode {k N : ℕ} [NeZero k]
-    (Sys : GlobalAlcoveChartSystem k N) : DecidableEq Sys.Code :=
-  Sys.decidableEqCode
-
-lemma exists_neighbor_of_not_exterior {k N : ℕ} [NeZero k]
-    (Sys : GlobalAlcoveChartSystem k N) (C : Sys.Code) (q : Fin k)
-    (hint :
-      ¬ IsExteriorFacet (n := Fin k)
-        ((Sys.toCell C).toTopCell.verts.erase (Sys.vertex C q))) :
-    ∃ D : Sys.Code, Sys.neighbor C q = some D := by
-  classical
-  cases h : Sys.neighbor C q with
-  | none =>
-      exact False.elim (hint (Sys.neighbor_none_exterior C q h))
-  | some D =>
-      exact ⟨D, rfl⟩
-
-lemma facet_mem_of_erase_vertex {k N : ℕ} [NeZero k]
-    (Sys : GlobalAlcoveChartSystem k N) (C : Sys.Code) (q : Fin k) :
-    (Sys.toCell C).toTopCell.verts.erase (Sys.vertex C q) ∈
-      (Sys.toCell C).toTopCell.facets := by
-  classical
-  rw [TopCell.mem_facets_iff_exists_erase]
-  exact ⟨Sys.vertex C q, Sys.vertex_mem C q, rfl⟩
-
-lemma facet_mem_codeOf {k N : ℕ} [NeZero k]
-    (Sys : GlobalAlcoveChartSystem k N) {cell : AlcoveCell k N}
-    {face : Finset (simplexGrid (n := Fin k) N)}
-    (hfacet : face ∈ cell.toTopCell.facets) :
-    face ∈ (Sys.toCell (Sys.codeOf cell)).toTopCell.facets := by
-  simpa only [Sys.toCell_codeOf cell] using hfacet
-
-@[irreducible]
-noncomputable def other {k N : ℕ} [NeZero k]
-    (Sys : GlobalAlcoveChartSystem k N)
-    (cell : AlcoveCell k N)
-    (face : Finset (simplexGrid (n := Fin k) N)) :
-    AlcoveCell k N := by
-  classical
-  exact
-    if hfacet : face ∈ cell.toTopCell.facets then
-      let C := Sys.codeOf cell
-      let q := Classical.choose (Sys.facet_index_exists C face (by
-        simpa [C] using Sys.facet_mem_codeOf hfacet))
-      if hint : ¬ IsExteriorFacet (n := Fin k) face then
-        Sys.toCell (Classical.choose (Sys.exists_neighbor_of_not_exterior C q (by
-          have hq := Classical.choose_spec
-            (Sys.facet_index_exists C face (by
-              simpa [C] using Sys.facet_mem_codeOf hfacet))
-          rw [hq] at hint
-          simpa using hint)))
-      else cell
-    else cell
-
-lemma other_eq_toCell_neighbor_of_nonexterior_facet {k N : ℕ} [NeZero k]
-    (Sys : GlobalAlcoveChartSystem k N)
-    {cell : AlcoveCell k N}
-    {face : Finset (simplexGrid (n := Fin k) N)}
-    (hfacet : face ∈ cell.toTopCell.facets)
-    (hint : ¬ IsExteriorFacet (n := Fin k) face) :
-    let C := Sys.codeOf cell
-    let q := Classical.choose (Sys.facet_index_exists C face (by
-      simpa [C] using Sys.facet_mem_codeOf hfacet))
-    ∃ D : Sys.Code,
-      Sys.neighbor C q = some D ∧ Sys.other cell face = Sys.toCell D := by
-  classical
-  unfold other
-  rw [dif_pos hfacet, dif_pos hint]
-  refine ⟨Classical.choose
-    (Sys.exists_neighbor_of_not_exterior
-      (Sys.codeOf cell)
-      (Classical.choose (Sys.facet_index_exists (Sys.codeOf cell) face (by
-        exact Sys.facet_mem_codeOf hfacet))) ?_), ?_, rfl⟩
-  · have hq := Classical.choose_spec
-      (Sys.facet_index_exists (Sys.codeOf cell) face (by
-        exact Sys.facet_mem_codeOf hfacet))
-    rw [hq] at hint
-    simpa using hint
-  · exact Classical.choose_spec
-      (Sys.exists_neighbor_of_not_exterior
-        (Sys.codeOf cell)
-        (Classical.choose (Sys.facet_index_exists (Sys.codeOf cell) face (by
-          exact Sys.facet_mem_codeOf hfacet))) (by
-          have hq := Classical.choose_spec
-            (Sys.facet_index_exists (Sys.codeOf cell) face (by
-              exact Sys.facet_mem_codeOf hfacet))
-          rw [hq] at hint
-          simpa using hint))
-
-lemma other_mem_of_nonexterior {k N : ℕ} [NeZero k]
-    (Sys : GlobalAlcoveChartSystem k N)
-    {cell : AlcoveCell k N}
-    {face : Finset (simplexGrid (n := Fin k) N)}
-    (hfacet : face ∈ cell.toTopCell.facets)
-    (hint : ¬ IsExteriorFacet (n := Fin k) face) :
-    face ∈ (Sys.other cell face).toTopCell.facets := by
-  classical
-  let C := Sys.codeOf cell
-  let q := Classical.choose (Sys.facet_index_exists C face (by
-    simpa [C] using Sys.facet_mem_codeOf hfacet))
-  have hq : face = (Sys.toCell C).toTopCell.verts.erase (Sys.vertex C q) :=
-    Classical.choose_spec (Sys.facet_index_exists C face (by
-      simpa [C] using Sys.facet_mem_codeOf hfacet))
-  obtain ⟨D, hnei, hother⟩ :=
-    Sys.other_eq_toCell_neighbor_of_nonexterior_facet hfacet hint
-  obtain ⟨q', hshared⟩ := Sys.neighbor_shares_facet C q D hnei
-  rw [hother, hq, hshared]
-  exact Sys.facet_mem_of_erase_vertex D q'
-
-lemma other_ne_of_nonexterior {k N : ℕ} [NeZero k]
-    (Sys : GlobalAlcoveChartSystem k N)
-    {cell : AlcoveCell k N}
-    {face : Finset (simplexGrid (n := Fin k) N)}
-    (hfacet : face ∈ cell.toTopCell.facets)
-    (hint : ¬ IsExteriorFacet (n := Fin k) face) :
-    Sys.other cell face ≠ cell := by
-  classical
-  let C := Sys.codeOf cell
-  let q := Classical.choose (Sys.facet_index_exists C face (by
-    simpa [C] using Sys.facet_mem_codeOf hfacet))
-  obtain ⟨D, hnei, hother⟩ :=
-    Sys.other_eq_toCell_neighbor_of_nonexterior_facet hfacet hint
-  intro h
-  exact Sys.neighbor_ne_cell C q D hnei (by
-    rw [hother] at h
-    simpa [C, Sys.toCell_codeOf cell] using h)
-
-lemma other_involutive_of_nonexterior {k N : ℕ} [NeZero k]
-    (Sys : GlobalAlcoveChartSystem k N)
-    {cell : AlcoveCell k N}
-    {face : Finset (simplexGrid (n := Fin k) N)}
-    (hfacet : face ∈ cell.toTopCell.facets)
-    (hint : ¬ IsExteriorFacet (n := Fin k) face) :
-    Sys.other (Sys.other cell face) face = cell := by
-  classical
-  let C := Sys.codeOf cell
-  let q := Classical.choose (Sys.facet_index_exists C face (by
-    simpa [C] using Sys.facet_mem_codeOf hfacet))
-  have hq : face = (Sys.toCell C).toTopCell.verts.erase (Sys.vertex C q) :=
-    Classical.choose_spec (Sys.facet_index_exists C face (by
-      simpa [C] using Sys.facet_mem_codeOf hfacet))
-  obtain ⟨D, hnei, hother⟩ :=
-    Sys.other_eq_toCell_neighbor_of_nonexterior_facet hfacet hint
-  obtain ⟨_q', hshared⟩ := Sys.neighbor_shares_facet C q D hnei
-  have hfacet₂ : face ∈ (Sys.toCell D).toTopCell.facets := by
-    rw [hq, hshared]
-    exact Sys.facet_mem_of_erase_vertex D _q'
-  let C₂ := Sys.codeOf (Sys.toCell D)
-  let q₂ := Classical.choose (Sys.facet_index_exists C₂ face (by
-    simpa [C₂, Sys.codeOf_toCell D] using hfacet₂))
-  have hq₂ :
-      face = (Sys.toCell C₂).toTopCell.verts.erase (Sys.vertex C₂ q₂) :=
-    Classical.choose_spec (Sys.facet_index_exists C₂ face (by
-      simpa [C₂, Sys.codeOf_toCell D] using hfacet₂))
-  have hshared₂ :
-      (Sys.toCell C).toTopCell.verts.erase (Sys.vertex C q) =
-        (Sys.toCell D).toTopCell.verts.erase (Sys.vertex D q₂) := by
-    have hq₂D :
-        face = (Sys.toCell D).toTopCell.verts.erase (Sys.vertex D q₂) := by
-      simpa [C₂, Sys.codeOf_toCell D] using hq₂
-    exact hq.symm.trans hq₂D
-  obtain ⟨E, hback, hother₂⟩ :=
-    Sys.other_eq_toCell_neighbor_of_nonexterior_facet
-      (cell := Sys.toCell D) (face := face) hfacet₂ hint
-  have hbackD : Sys.neighbor D q₂ = some E := by
-    simpa [C₂, Sys.codeOf_toCell D, q₂] using hback
-  have hE : Sys.toCell E = Sys.toCell C :=
-    Sys.neighbor_back_to_cell C D E q q₂ hnei hshared₂ hbackD
-  rw [hother, hother₂]
-  simpa [C, Sys.toCell_codeOf cell] using hE
-
-noncomputable def toInteriorFacetNeighborData {k N : ℕ} [NeZero k]
-    (Sys : GlobalAlcoveChartSystem k N) :
-    AlcoveCell.InteriorFacetNeighborData k N where
-  other := Sys.other
-  other_mem := fun _cell _face hfacet hint =>
-    Sys.other_mem_of_nonexterior hfacet hint
-  other_ne := fun _cell _face hfacet hint =>
-    Sys.other_ne_of_nonexterior hfacet hint
-  other_involutive := fun _cell _face hfacet hint =>
-    Sys.other_involutive_of_nonexterior hfacet hint
-
-noncomputable def toInteriorFacetPairingData {k N : ℕ} [NeZero k]
-    (Sys : GlobalAlcoveChartSystem k N) :
-    AlcoveCell.InteriorFacetPairingData k N :=
-  Sys.toInteriorFacetNeighborData.toInteriorFacetPairingData
-
-end GlobalAlcoveChartSystem
-
-namespace CircuitAlcove
-
-def finCycleSucc {k : ℕ} [NeZero k] (i : Fin k) : Fin k :=
-  if h : i.1 + 1 < k then ⟨i.1 + 1, h⟩ else 0
-
-lemma finCycleSucc_ne {k : ℕ} [NeZero k] [Fact (1 < k)] (i : Fin k) :
-    finCycleSucc i ≠ i := by
-  intro hEq
-  by_cases h : i.1 + 1 < k
-  · have hval := congrArg Fin.val hEq
-    simp [finCycleSucc, h] at hval
-  · have hval := congrArg Fin.val hEq
-    simp [finCycleSucc, h] at hval
-    have hk : 1 < k := Fact.out
-    have hi : i.1 < k := i.2
-    omega
-
-def finCyclePred {k : ℕ} [NeZero k] [Fact (1 < k)] (i : Fin k) : Fin k :=
-  if h : i.1 = 0 then ⟨k - 1, by omega⟩ else ⟨i.1 - 1, by omega⟩
-
-lemma finCycleSucc_pred {k : ℕ} [NeZero k] [Fact (1 < k)] (i : Fin k) :
-    finCycleSucc (finCyclePred i) = i := by
-  apply Fin.ext
-  by_cases hi : i.1 = 0
-  · have hk : 1 < k := Fact.out
-    have hnot : ¬ (k - 1 + 1 < k) := by omega
-    simp [finCyclePred, hi, finCycleSucc, hnot]
-  · have hi_pos : 0 < i.1 := Nat.pos_of_ne_zero hi
-    have hi_lt : i.1 < k := i.2
-    have hlt : i.1 - 1 + 1 < k := by omega
-    simp [finCyclePred, hi, finCycleSucc, hlt]
-    omega
-
-lemma finCyclePred_succ {k : ℕ} [NeZero k] [Fact (1 < k)] (i : Fin k) :
-    finCyclePred (finCycleSucc i) = i := by
-  apply Fin.ext
-  by_cases hnext : i.1 + 1 < k
-  · have hne : i.1 + 1 ≠ 0 := by omega
-    simp [finCycleSucc, hnext, finCyclePred]
-  · have hi_lt : i.1 < k := i.2
-    simp [finCycleSucc, hnext, finCyclePred]
-    omega
-
-lemma finCycleSucc_injective {k : ℕ} [NeZero k] [Fact (1 < k)] :
-    Function.Injective (finCycleSucc : Fin k → Fin k) := by
-  intro a b h
-  calc
-    a = finCyclePred (finCycleSucc a) := (finCyclePred_succ a).symm
-    _ = finCyclePred (finCycleSucc b) := by rw [h]
-    _ = b := finCyclePred_succ b
-
-lemma finCyclePred_ne {k : ℕ} [NeZero k] [Fact (1 < k)] (i : Fin k) :
-    finCyclePred i ≠ i := by
-  intro hEq
-  by_cases h : i.1 = 0
-  · have hval := congrArg Fin.val hEq
-    simp [finCyclePred, h] at hval
-    have hk : 1 < k := Fact.out
-    omega
-  · have hval := congrArg Fin.val hEq
-    simp [finCyclePred, h] at hval
-    have hi : i.1 < k := i.2
-    omega
-
-def cyclicAdjacent {k : ℕ} [NeZero k] (a b : Fin k) : Prop :=
-  finCycleSucc a = b ∨ finCycleSucc b = a
-
-lemma cyclicAdjacent_comm {k : ℕ} [NeZero k] {a b : Fin k} :
-    cyclicAdjacent a b ↔ cyclicAdjacent b a := by
-  unfold cyclicAdjacent
-  constructor <;> intro h <;> exact h.symm
-
-/--
-A concrete code for one circuit/alcove cell in the Lam-Postnikov model.
-
-The vertices form a closed cyclic sequence.  At time `t`, the edge label is `word t`, meaning
-that the next vertex is obtained by moving one unit from coordinate `word t` to the cyclic
-successor coordinate `word t + 1`.  The `close` field records the cube-slice fact needed by the
-Sperner proof: all vertices lie in one unit neighborhood.
--/
-structure Code (k N : ℕ) [NeZero k] [Fact (1 < k)] where
-  vertex : Fin k → simplexGrid (n := Fin k) N
-  word : Equiv.Perm (Fin k)
-  positive : ∀ t : Fin k, 0 < (vertex t).1 (word t)
-  step :
-    ∀ t : Fin k,
-      vertex (finCycleSucc t) =
-        transfer (n := Fin k) (vertex t) (i := word t) (j := finCycleSucc (word t))
-          (Ne.symm (finCycleSucc_ne (word t))) (positive t)
-  vertex_injective : Function.Injective vertex
-  close : ∀ t : Fin k, UnitClose (n := Fin k) (vertex t) (vertex 0)
-
-namespace Code
-
-def incomingLabel {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Code k N) (q : Fin k) : Fin k :=
-  C.word (finCyclePred q)
-
-def outgoingLabel {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Code k N) (q : Fin k) : Fin k :=
-  C.word q
-
-lemma incomingLabel_ne_outgoingLabel {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Code k N) (q : Fin k) :
-    C.incomingLabel q ≠ C.outgoingLabel q := by
-  intro h
-  exact finCyclePred_ne q (C.word.injective h)
-
-/--
-The Lam-Postnikov interior swap case for the facet obtained by deleting vertex `q`.
-If the incoming and outgoing edge labels are not cyclic neighbors, the neighboring circuit is
-obtained by swapping these two consecutive edge labels.  If they are cyclic neighbors, the facet
-is on a cube/hypersimplex boundary and must be handled by the cube-wall/exterior case.
--/
-def swapAllowed {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Code k N) (q : Fin k) : Prop :=
-  ¬ cyclicAdjacent (C.incomingLabel q) (C.outgoingLabel q)
-
-def swappedWord {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Code k N) (q : Fin k) : Equiv.Perm (Fin k) :=
-  (Equiv.swap (finCyclePred q) q).trans C.word
-
-@[simp]
-lemma swappedWord_apply_pred {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Code k N) (q : Fin k) :
-    C.swappedWord q (finCyclePred q) = C.outgoingLabel q := by
-  simp [swappedWord, outgoingLabel]
-
-@[simp]
-lemma swappedWord_apply_self {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Code k N) (q : Fin k) :
-    C.swappedWord q q = C.incomingLabel q := by
-  simp [swappedWord, incomingLabel]
-
-lemma swappedWord_apply_of_ne {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Code k N) (q t : Fin k) (htp : t ≠ finCyclePred q) (htq : t ≠ q) :
-    C.swappedWord q t = C.word t := by
-  rw [swappedWord, Equiv.trans_apply, Equiv.swap_apply_of_ne_of_ne htp htq]
-
-noncomputable def verts {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Code k N) : Finset (simplexGrid (n := Fin k) N) :=
-  (Finset.univ : Finset (Fin k)).image C.vertex
-
-lemma mem_verts {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Code k N) {a : simplexGrid (n := Fin k) N} :
-    a ∈ C.verts ↔ ∃ t : Fin k, C.vertex t = a := by
-  classical
-  simp [verts]
-
-lemma vertex_mem_verts {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Code k N) (t : Fin k) :
-    C.vertex t ∈ C.verts := by
-  classical
-  rw [mem_verts]
-  exact ⟨t, rfl⟩
-
-lemma card_verts {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Code k N) :
-    C.verts.card = Fintype.card (Fin k) := by
-  classical
-  rw [verts, Finset.card_image_of_injective _ C.vertex_injective]
-  simp
-
-noncomputable def toTopCell {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Code k N) : TopCell (n := Fin k) N where
-  verts := C.verts
-  base := C.vertex 0
-  close := by
-    intro a ha
-    rw [mem_verts] at ha
-    obtain ⟨t, rfl⟩ := ha
-    exact C.close t
-  card_verts := C.card_verts
-
-noncomputable def facet {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Code k N) (q : Fin k) : Finset (simplexGrid (n := Fin k) N) :=
-  C.toTopCell.verts.erase (C.vertex q)
-
-@[simp]
-lemma facet_def {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Code k N) (q : Fin k) :
-    C.facet q = C.toTopCell.verts.erase (C.vertex q) :=
-  rfl
-
-lemma vertex_notMem_facet_self {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Code k N) (q : Fin k) :
-    C.vertex q ∉ C.facet q := by
-  classical
-  simp [facet]
-
-lemma vertex_mem_facet_iff {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Code k N) (q t : Fin k) :
-    C.vertex t ∈ C.facet q ↔ t ≠ q := by
-  classical
-  rw [facet, Finset.mem_erase]
-  constructor
-  · intro h htq
-    exact h.1 (by rw [htq])
-  · intro htq
-    exact ⟨fun h => htq (C.vertex_injective h), C.vertex_mem_verts t⟩
-
-lemma facet_subset_verts {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Code k N) (q : Fin k) :
-    C.facet q ⊆ C.toTopCell.verts := by
-  classical
-  exact Finset.erase_subset _ _
-
-lemma facet_card_add_one {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Code k N) (q : Fin k) :
-    (C.facet q).card + 1 = C.toTopCell.verts.card := by
-  classical
-  rw [facet, Finset.card_erase_add_one]
-  exact C.vertex_mem_verts q
-
-lemma erase_vertex_mem_facets {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Code k N) (q : Fin k) :
-    C.toTopCell.verts.erase (C.vertex q) ∈ C.toTopCell.facets := by
-  classical
-  rw [TopCell.mem_facets_iff_exists_erase]
-  exact ⟨C.vertex q, C.vertex_mem_verts q, rfl⟩
-
-lemma facet_mem_facets {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Code k N) (q : Fin k) :
-    C.facet q ∈ C.toTopCell.facets := by
-  simpa [facet] using C.erase_vertex_mem_facets q
-
-lemma mem_facets_iff_exists_erase_vertex {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Code k N) (face : Finset (simplexGrid (n := Fin k) N)) :
-    face ∈ C.toTopCell.facets ↔
-      ∃ q : Fin k, face = C.toTopCell.verts.erase (C.vertex q) := by
-  classical
-  rw [TopCell.mem_facets_iff_exists_erase]
-  constructor
-  · rintro ⟨a, ha, hface⟩
-    change a ∈ C.verts at ha
-    rw [mem_verts] at ha
-    obtain ⟨q, hq⟩ := ha
-    exact ⟨q, by rw [hface, hq]⟩
-  · rintro ⟨q, hface⟩
-    exact ⟨C.vertex q, C.vertex_mem_verts q, hface⟩
-
-lemma mem_facets_iff_exists_facet {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Code k N) (face : Finset (simplexGrid (n := Fin k) N)) :
-    face ∈ C.toTopCell.facets ↔ ∃ q : Fin k, face = C.facet q := by
-  rw [mem_facets_iff_exists_erase_vertex]
-  rfl
-
-end Code
-
-/--
-Subset-level form of a circuit alcove inside a cube slice.
-
-Each step replaces `word t` in the current `m`-subset by its cyclic successor.  The coordinate
-lemma `sliceVertex_insert_erase_eq_transfer` turns that subset replacement into the grid
-transfer step used by `Code`.
--/
-structure SubsetCircuit (k N : ℕ) [NeZero k] [Fact (1 < k)] where
-  anchor : CubeSliceAnchor k N
-  subset : Fin k → Finset (Fin k)
-  word : Equiv.Perm (Fin k)
-  subset_card : ∀ t : Fin k, (subset t).card = anchor.m
-  source_mem : ∀ t : Fin k, word t ∈ subset t
-  target_notMem : ∀ t : Fin k, finCycleSucc (word t) ∉ subset t
-  replace_subset :
-    ∀ t : Fin k,
-      subset (finCycleSucc t) =
-        insert (finCycleSucc (word t)) ((subset t).erase (word t))
-  subset_injective : Function.Injective subset
-
-structure RawSubsetCircuit (k N : ℕ) where
-  anchor : CubeSliceAnchor k N
-  subset : Fin k → Finset (Fin k)
-  word : Equiv.Perm (Fin k)
-
-namespace RawSubsetCircuit
-
-noncomputable instance instFintype (k N : ℕ) : Fintype (RawSubsetCircuit k N) := by
-  classical
-  refine Fintype.ofEquiv
-    (CubeSliceAnchor k N × (Fin k → Finset (Fin k)) × Equiv.Perm (Fin k)) ?_
-  refine
-    { toFun := fun p => ⟨p.1, p.2.1, p.2.2⟩
-      invFun := fun C => (C.anchor, C.subset, C.word)
-      left_inv := ?_
-      right_inv := ?_ }
-  · intro p
-    cases p with
-    | mk A rest =>
-        cases rest
-        rfl
-  · intro C
-    cases C
-    rfl
-
-def IsValid {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : RawSubsetCircuit k N) : Prop :=
-  (∀ t : Fin k, (C.subset t).card = C.anchor.m) ∧
-  (∀ t : Fin k, C.word t ∈ C.subset t) ∧
-  (∀ t : Fin k, finCycleSucc (C.word t) ∉ C.subset t) ∧
-  (∀ t : Fin k,
-    C.subset (finCycleSucc t) =
-      insert (finCycleSucc (C.word t)) ((C.subset t).erase (C.word t))) ∧
-  Function.Injective C.subset
-
-abbrev Valid (k N : ℕ) [NeZero k] [Fact (1 < k)] :=
-  {C : RawSubsetCircuit k N // C.IsValid}
-
-noncomputable instance instFintypeValid (k N : ℕ) [NeZero k] [Fact (1 < k)] :
-    Fintype (Valid k N) := by
-  classical
-  infer_instance
-
-noncomputable instance instDecidableEqValid (k N : ℕ) [NeZero k] [Fact (1 < k)] :
-    DecidableEq (Valid k N) := by
-  classical
-  infer_instance
-
-noncomputable def toSubsetCircuit {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Valid k N) : SubsetCircuit k N where
-  anchor := C.1.anchor
-  subset := C.1.subset
-  word := C.1.word
-  subset_card := C.2.1
-  source_mem := C.2.2.1
-  target_notMem := C.2.2.2.1
-  replace_subset := C.2.2.2.2.1
-  subset_injective := C.2.2.2.2.2
-
-noncomputable def swapCandidate {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Valid k N) (q : Fin k) : RawSubsetCircuit k N where
-  anchor := C.1.anchor
-  subset := fun t =>
-    if t = q then
-      insert (finCycleSucc (C.1.word q)) ((C.1.subset (finCyclePred q)).erase (C.1.word q))
-    else C.1.subset t
-  word := (Equiv.swap (finCyclePred q) q).trans C.1.word
-
-@[simp]
-lemma swapCandidate_anchor {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Valid k N) (q : Fin k) :
-    (swapCandidate C q).anchor = C.1.anchor :=
-  rfl
-
-@[simp]
-lemma swapCandidate_subset_self {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Valid k N) (q : Fin k) :
-    (swapCandidate C q).subset q =
-      insert (finCycleSucc (C.1.word q)) ((C.1.subset (finCyclePred q)).erase (C.1.word q)) := by
-  simp [swapCandidate]
-
-lemma swapCandidate_subset_of_ne {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Valid k N) (q t : Fin k) (ht : t ≠ q) :
-    (swapCandidate C q).subset t = C.1.subset t := by
-  simp [swapCandidate, ht]
-
-@[simp]
-lemma swapCandidate_word_pred {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Valid k N) (q : Fin k) :
-    (swapCandidate C q).word (finCyclePred q) = C.1.word q := by
-  simp [swapCandidate]
-
-@[simp]
-lemma swapCandidate_word_self {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Valid k N) (q : Fin k) :
-    (swapCandidate C q).word q = C.1.word (finCyclePred q) := by
-  simp [swapCandidate]
-
-lemma swapCandidate_word_of_ne {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Valid k N) (q t : Fin k) (htp : t ≠ finCyclePred q) (htq : t ≠ q) :
-    (swapCandidate C q).word t = C.1.word t := by
-  simp [swapCandidate, Equiv.swap_apply_of_ne_of_ne htp htq]
-
-lemma outgoing_mem_pred_of_swapAllowed {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Valid k N) (q : Fin k)
-    (hallowed : ¬ cyclicAdjacent (C.1.word (finCyclePred q)) (C.1.word q)) :
-    C.1.word q ∈ C.1.subset (finCyclePred q) := by
-  classical
-  let p := finCyclePred q
-  have hrep := C.2.2.2.2.1 p
-  have hpq : finCycleSucc p = q := by
-    simpa [p] using finCycleSucc_pred q
-  rw [hpq] at hrep
-  have hmem : C.1.word q ∈ C.1.subset q := C.2.2.1 q
-  rw [hrep] at hmem
-  rw [Finset.mem_insert] at hmem
-  rcases hmem with hhit | herase
-  · exact False.elim (hallowed (Or.inl hhit.symm))
-  · exact (Finset.mem_erase.mp herase).2
-
-lemma succ_outgoing_notMem_pred_of_swapAllowed {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Valid k N) (q : Fin k)
-    (hallowed : ¬ cyclicAdjacent (C.1.word (finCyclePred q)) (C.1.word q)) :
-    finCycleSucc (C.1.word q) ∉ C.1.subset (finCyclePred q) := by
-  classical
-  intro hmem_pred
-  let p := finCyclePred q
-  have hrep := C.2.2.2.2.1 p
-  have hpq : finCycleSucc p = q := by
-    simpa [p] using finCycleSucc_pred q
-  rw [hpq] at hrep
-  have hne_source : finCycleSucc (C.1.word q) ≠ C.1.word p := by
-    intro h
-    exact hallowed (Or.inr h)
-  have hmem_erase :
-      finCycleSucc (C.1.word q) ∈ (C.1.subset p).erase (C.1.word p) := by
-    rw [Finset.mem_erase]
-    exact ⟨hne_source, hmem_pred⟩
-  have hmem_q : finCycleSucc (C.1.word q) ∈ C.1.subset q := by
-    rw [hrep]
-    exact Finset.mem_insert_of_mem hmem_erase
-  exact C.2.2.2.1 q hmem_q
-
-lemma swapCandidate_subset_card_of_swapAllowed {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Valid k N) (q : Fin k)
-    (hallowed : ¬ cyclicAdjacent (C.1.word (finCyclePred q)) (C.1.word q)) :
-    ∀ t : Fin k, ((swapCandidate C q).subset t).card = (swapCandidate C q).anchor.m := by
-  intro t
-  by_cases htq : t = q
-  · subst t
-    rw [swapCandidate_subset_self, swapCandidate_anchor]
-    rw [Finset.card_insert_of_notMem]
-    · rw [Finset.card_erase_of_mem (outgoing_mem_pred_of_swapAllowed C q hallowed)]
-      rw [C.2.1 (finCyclePred q)]
-      exact Nat.sub_add_cancel C.1.anchor.hm_pos
-    · simp [succ_outgoing_notMem_pred_of_swapAllowed C q hallowed]
-  · rw [swapCandidate_subset_of_ne C q t htq, swapCandidate_anchor]
-    exact C.2.1 t
-
-lemma swapCandidate_source_mem_of_swapAllowed {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Valid k N) (q : Fin k)
-    (hallowed : ¬ cyclicAdjacent (C.1.word (finCyclePred q)) (C.1.word q)) :
-    ∀ t : Fin k, (swapCandidate C q).word t ∈ (swapCandidate C q).subset t := by
-  intro t
-  by_cases htq : t = q
-  · subst t
-    rw [swapCandidate_word_self, swapCandidate_subset_self]
-    rw [Finset.mem_insert, Finset.mem_erase]
-    right
-    constructor
-    · intro hxy
-      have hpq : finCyclePred q = q := C.1.word.injective hxy
-      exact finCyclePred_ne q hpq
-    · exact C.2.2.1 (finCyclePred q)
-  · by_cases htp : t = finCyclePred q
-    · subst t
-      rw [swapCandidate_word_pred, swapCandidate_subset_of_ne C q (finCyclePred q)
-        (finCyclePred_ne q)]
-      exact outgoing_mem_pred_of_swapAllowed C q hallowed
-    · rw [swapCandidate_word_of_ne C q t htp htq, swapCandidate_subset_of_ne C q t htq]
-      exact C.2.2.1 t
-
-lemma swapCandidate_target_notMem_of_swapAllowed {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Valid k N) (q : Fin k)
-    (hallowed : ¬ cyclicAdjacent (C.1.word (finCyclePred q)) (C.1.word q)) :
-    ∀ t : Fin k, finCycleSucc ((swapCandidate C q).word t) ∉ (swapCandidate C q).subset t := by
-  intro t
-  by_cases htq : t = q
-  · subst t
-    rw [swapCandidate_word_self, swapCandidate_subset_self]
-    rw [Finset.mem_insert, Finset.mem_erase]
-    intro hmem
-    rcases hmem with hhit | herase
-    · have hxy : C.1.word (finCyclePred q) = C.1.word q :=
-        finCycleSucc_injective hhit
-      have hpq : finCyclePred q = q := C.1.word.injective hxy
-      exact finCyclePred_ne q hpq
-    · exact C.2.2.2.1 (finCyclePred q) herase.2
-  · by_cases htp : t = finCyclePred q
-    · subst t
-      rw [swapCandidate_word_pred, swapCandidate_subset_of_ne C q (finCyclePred q)
-        (finCyclePred_ne q)]
-      exact succ_outgoing_notMem_pred_of_swapAllowed C q hallowed
-    · rw [swapCandidate_word_of_ne C q t htp htq, swapCandidate_subset_of_ne C q t htq]
-      exact C.2.2.2.1 t
-
-lemma swapCandidate_replace_of_ne_self_pred {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Valid k N) (q t : Fin k) (htq : t ≠ q) (htp : t ≠ finCyclePred q) :
-    (swapCandidate C q).subset (finCycleSucc t) =
-      insert (finCycleSucc ((swapCandidate C q).word t))
-        (((swapCandidate C q).subset t).erase ((swapCandidate C q).word t)) := by
-  have hsucc_ne_q : finCycleSucc t ≠ q := by
-    intro h
-    have hpred := congrArg finCyclePred h
-    rw [finCyclePred_succ t] at hpred
-    exact htp hpred
-  rw [swapCandidate_subset_of_ne C q (finCycleSucc t) hsucc_ne_q]
-  rw [swapCandidate_word_of_ne C q t htp htq]
-  rw [swapCandidate_subset_of_ne C q t htq]
-  exact C.2.2.2.2.1 t
-
-lemma swapCandidate_replace_pred {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Valid k N) (q : Fin k) :
-    (swapCandidate C q).subset (finCycleSucc (finCyclePred q)) =
-      insert (finCycleSucc ((swapCandidate C q).word (finCyclePred q)))
-        (((swapCandidate C q).subset (finCyclePred q)).erase
-          ((swapCandidate C q).word (finCyclePred q))) := by
-  rw [finCycleSucc_pred q]
-  rw [swapCandidate_subset_self]
-  rw [swapCandidate_word_pred]
-  rw [swapCandidate_subset_of_ne C q (finCyclePred q) (finCyclePred_ne q)]
-
-lemma swapCandidate_replace_self_of_swapAllowed {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Valid k N) (q : Fin k)
-    (hallowed : ¬ cyclicAdjacent (C.1.word (finCyclePred q)) (C.1.word q)) :
-    (swapCandidate C q).subset (finCycleSucc q) =
-      insert (finCycleSucc ((swapCandidate C q).word q))
-        (((swapCandidate C q).subset q).erase ((swapCandidate C q).word q)) := by
-  rw [swapCandidate_subset_of_ne C q (finCycleSucc q) (finCycleSucc_ne q)]
-  rw [C.2.2.2.2.1 q]
-  rw [swapCandidate_word_self]
-  rw [swapCandidate_subset_self]
-  let p := finCyclePred q
-  let a := C.1.word p
-  let b := C.1.word q
-  have hrep_p := C.2.2.2.2.1 p
-  have hpq : finCycleSucc p = q := by
-    simpa [p] using finCycleSucc_pred q
-  rw [hpq] at hrep_p
-  rw [show C.1.subset q = insert (finCycleSucc a) ((C.1.subset p).erase a) by
-    simpa [a] using hrep_p]
-  exact finset_insert_erase_comm (C.1.subset p)
-    (a := a) (b := b) (x := finCycleSucc a) (y := finCycleSucc b)
-    (by
-      intro hab
-      exact finCyclePred_ne q (C.1.word.injective (by simpa [p, a, b] using hab)))
-    (by
-      intro hxb
-      exact hallowed (Or.inl (by simpa [a, b] using hxb)))
-    (by
-      intro hya
-      exact hallowed (Or.inr (by simpa [a, b] using hya)))
-
-lemma swapCandidate_replace_of_swapAllowed {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Valid k N) (q : Fin k)
-    (hallowed : ¬ cyclicAdjacent (C.1.word (finCyclePred q)) (C.1.word q)) :
-    ∀ t : Fin k,
-      (swapCandidate C q).subset (finCycleSucc t) =
-        insert (finCycleSucc ((swapCandidate C q).word t))
-          (((swapCandidate C q).subset t).erase ((swapCandidate C q).word t)) := by
-  intro t
-  by_cases htq : t = q
-  · subst t
-    exact swapCandidate_replace_self_of_swapAllowed C q hallowed
-  · by_cases htp : t = finCyclePred q
-    · subst t
-      exact swapCandidate_replace_pred C q
-    · exact swapCandidate_replace_of_ne_self_pred C q t htq htp
-
-lemma eq_word_of_mem_notMem_succ {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Valid k N) {t x : Fin k}
-    (hmem : x ∈ C.1.subset t) (hnot : x ∉ C.1.subset (finCycleSucc t)) :
-    x = C.1.word t := by
-  by_contra hx
-  exact hnot (by
-    rw [C.2.2.2.2.1 t]
-    exact Finset.mem_insert_of_mem (Finset.mem_erase.mpr ⟨hx, hmem⟩))
-
-lemma eq_succ_word_of_notMem_mem_succ {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Valid k N) {t x : Fin k}
-    (hnot : x ∉ C.1.subset t) (hmem : x ∈ C.1.subset (finCycleSucc t)) :
-    x = finCycleSucc (C.1.word t) := by
-  rw [C.2.2.2.2.1 t, Finset.mem_insert, Finset.mem_erase] at hmem
-  rcases hmem with hhit | herase
-  · exact hhit
-  · exact False.elim (hnot herase.2)
-
-lemma swapCandidate_subset_self_ne_original_pred {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Valid k N) (q : Fin k)
-    (hallowed : ¬ cyclicAdjacent (C.1.word (finCyclePred q)) (C.1.word q)) :
-    (swapCandidate C q).subset q ≠ C.1.subset (finCyclePred q) := by
-  intro h
-  have hmem : C.1.word q ∈ (swapCandidate C q).subset q := by
-    rw [h]
-    exact outgoing_mem_pred_of_swapAllowed C q hallowed
-  rw [swapCandidate_subset_self, Finset.mem_insert, Finset.mem_erase] at hmem
-  rcases hmem with hhit | herase
-  · exact finCycleSucc_ne (C.1.word q) hhit.symm
-  · exact herase.1 rfl
-
-lemma swapCandidate_subset_self_ne_original_self {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Valid k N) (q : Fin k) :
-    (swapCandidate C q).subset q ≠ C.1.subset q := by
-  intro h
-  have hmem : finCycleSucc (C.1.word q) ∈ C.1.subset q := by
-    rw [← h, swapCandidate_subset_self]
-    exact Finset.mem_insert_self _ _
-  exact C.2.2.2.1 q hmem
-
-lemma swapCandidate_subset_self_ne_original_succ {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Valid k N) (q : Fin k)
-    (hallowed : ¬ cyclicAdjacent (C.1.word (finCyclePred q)) (C.1.word q)) :
-    (swapCandidate C q).subset q ≠ C.1.subset (finCycleSucc q) := by
-  intro h
-  let p := finCyclePred q
-  let a := C.1.word p
-  let b := C.1.word q
-  have ha_mem_candidate : a ∈ (swapCandidate C q).subset q := by
-    rw [swapCandidate_subset_self, Finset.mem_insert, Finset.mem_erase]
-    right
-    constructor
-    · intro hab
-      exact finCyclePred_ne q (C.1.word.injective (by simpa [p, a, b] using hab))
-    · exact C.2.2.1 p
-  have ha_not_mem_succ : a ∉ C.1.subset (finCycleSucc q) := by
-    intro ha
-    have hrep_q := C.2.2.2.2.1 q
-    rw [hrep_q, Finset.mem_insert, Finset.mem_erase] at ha
-    rcases ha with hhit | herase
-    · exact hallowed (Or.inr (by simpa [a, b] using hhit.symm))
-    · have ha_not_q : a ∉ C.1.subset q := by
-        have hrep_p := C.2.2.2.2.1 p
-        have hpq : finCycleSucc p = q := by
-          simpa [p] using finCycleSucc_pred q
-        rw [hpq] at hrep_p
-        rw [hrep_p, Finset.mem_insert, Finset.mem_erase]
-        intro hmem
-        rcases hmem with hhit | herase'
-        · exact finCycleSucc_ne a (by simpa [a] using hhit.symm)
-        · exact herase'.1 rfl
-      exact ha_not_q herase.2
-  exact ha_not_mem_succ (by rw [← h]; exact ha_mem_candidate)
-
-lemma swapCandidate_isValid_of_swapAllowed_of_replace_injective {k N : ℕ}
-    [NeZero k] [Fact (1 < k)]
-    (C : Valid k N) (q : Fin k)
-    (hallowed : ¬ cyclicAdjacent (C.1.word (finCyclePred q)) (C.1.word q))
-    (hreplace :
-      ∀ t : Fin k,
-        (swapCandidate C q).subset (finCycleSucc t) =
-          insert (finCycleSucc ((swapCandidate C q).word t))
-            (((swapCandidate C q).subset t).erase ((swapCandidate C q).word t)))
-    (hinj : Function.Injective (swapCandidate C q).subset) :
-    (swapCandidate C q).IsValid :=
-  ⟨swapCandidate_subset_card_of_swapAllowed C q hallowed,
-    swapCandidate_source_mem_of_swapAllowed C q hallowed,
-    swapCandidate_target_notMem_of_swapAllowed C q hallowed,
-    hreplace,
-    hinj⟩
-
-end RawSubsetCircuit
-
-namespace SubsetCircuit
-
-noncomputable def vertex {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : SubsetCircuit k N) (t : Fin k) : simplexGrid (n := Fin k) N :=
-  sliceVertex C.anchor (C.subset t) (C.subset_card t)
-
-lemma vertex_injective {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : SubsetCircuit k N) : Function.Injective C.vertex := by
-  intro t u h
-  exact C.subset_injective (sliceVertex_injective C.anchor h)
-
-lemma close {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : SubsetCircuit k N) (t : Fin k) :
-    UnitClose (n := Fin k) (C.vertex t) (C.vertex 0) :=
-  unitClose_sliceVertex_sliceVertex C.anchor (C.subset_card t) (C.subset_card 0)
-
-noncomputable def toCode {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : SubsetCircuit k N) : Code k N where
-  vertex := C.vertex
-  word := C.word
-  positive := by
-    intro t
-    rw [vertex, sliceVertex_apply]
-    have hmem := C.source_mem t
-    simp [hmem]
-  step := by
-    intro t
-    change
-      sliceVertex C.anchor (C.subset (finCycleSucc t)) (C.subset_card (finCycleSucc t)) =
-        transfer (n := Fin k)
-          (sliceVertex C.anchor (C.subset t) (C.subset_card t))
-          (i := C.word t) (j := finCycleSucc (C.word t))
-          (Ne.symm (finCycleSucc_ne (C.word t))) _
-    convert sliceVertex_insert_erase_eq_transfer C.anchor (C.subset_card t)
-      (Ne.symm (finCycleSucc_ne (C.word t)))
-      (C.source_mem t) (C.target_notMem t)
-      (hT := by
-        rw [Finset.card_insert_of_notMem]
-        · rw [Finset.card_erase_of_mem (C.source_mem t), C.subset_card t]
-          exact Nat.sub_add_cancel C.anchor.hm_pos
-        · simp [C.target_notMem t]) using 1
-    apply Subtype.ext
-    funext x
-    simp [sliceVertex, C.replace_subset t]
-  vertex_injective := C.vertex_injective
-  close := C.close
-
-@[simp]
-lemma toCode_vertex {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : SubsetCircuit k N) :
-    C.toCode.vertex = C.vertex :=
-  rfl
-
-@[simp]
-lemma toCode_word {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : SubsetCircuit k N) :
-    C.toCode.word = C.word :=
-  rfl
-
-end SubsetCircuit
-
-/--
-Primary target for the explicit Lam-Postnikov construction.
-
-This version stores actual subset circuits as the cell codes.  The fields `toCell`,
-`cell_verts`, and `neighbor_*` are precisely the global triangulation theorem for these circuits.
-It converts mechanically to `Model`.
--/
-structure SubsetModel (k N : ℕ) [NeZero k] [Fact (1 < k)] where
-  CellCode : Type*
-  fintypeCellCode : Fintype CellCode
-  decidableEqCellCode : DecidableEq CellCode
-  circuit : CellCode → SubsetCircuit k N
-  toCell : CellCode → AlcoveCell k N
-  codeOf : AlcoveCell k N → CellCode
-  toCell_codeOf : ∀ cell : AlcoveCell k N, toCell (codeOf cell) = cell
-  codeOf_toCell : ∀ C : CellCode, codeOf (toCell C) = C
-  cell_verts :
-    ∀ C : CellCode, (toCell C).toTopCell.verts = (circuit C).toCode.verts
-  neighbor : CellCode → Fin k → Option CellCode
-  neighbor_shares_facet :
-    ∀ (C : CellCode) (q : Fin k) (D : CellCode),
-      neighbor C q = some D →
-        ∃ q' : Fin k,
-          (toCell C).toTopCell.verts.erase ((circuit C).vertex q) =
-            (toCell D).toTopCell.verts.erase ((circuit D).vertex q')
-  neighbor_none_exterior :
-    ∀ (C : CellCode) (q : Fin k),
-      neighbor C q = none →
-        IsExteriorFacet (n := Fin k)
-          ((toCell C).toTopCell.verts.erase ((circuit C).vertex q))
-  neighbor_ne_cell :
-    ∀ (C : CellCode) (q : Fin k) (D : CellCode),
-      neighbor C q = some D → toCell D ≠ toCell C
-  neighbor_back_to_cell :
-    ∀ (C D E : CellCode) (q q' : Fin k),
-      neighbor C q = some D →
-        (toCell C).toTopCell.verts.erase ((circuit C).vertex q) =
-          (toCell D).toTopCell.verts.erase ((circuit D).vertex q') →
-        neighbor D q' = some E →
-          toCell E = toCell C
-
-namespace SubsetModel
-
-end SubsetModel
-
-/--
-Concrete remaining target for the interior pseudomanifold theorem.
-
-The cell codes are exactly the finite subtype `RawSubsetCircuit.Valid k N`; the fields here say
-that these valid circuit codes are equivalent to the semantic alcove cells and carry the correct
-facet-neighbor operation.
--/
-structure ValidSubsetModelData (k N : ℕ) [NeZero k] [Fact (1 < k)] where
-  toCell : RawSubsetCircuit.Valid k N → AlcoveCell k N
-  codeOf : AlcoveCell k N → RawSubsetCircuit.Valid k N
-  toCell_codeOf : ∀ cell : AlcoveCell k N, toCell (codeOf cell) = cell
-  codeOf_toCell : ∀ C : RawSubsetCircuit.Valid k N, codeOf (toCell C) = C
-  cell_verts :
-    ∀ C : RawSubsetCircuit.Valid k N,
-      (toCell C).toTopCell.verts = (RawSubsetCircuit.toSubsetCircuit C).toCode.verts
-  neighbor : RawSubsetCircuit.Valid k N → Fin k → Option (RawSubsetCircuit.Valid k N)
-  neighbor_shares_facet :
-    ∀ (C : RawSubsetCircuit.Valid k N) (q : Fin k) (D : RawSubsetCircuit.Valid k N),
-      neighbor C q = some D →
-        ∃ q' : Fin k,
-          (toCell C).toTopCell.verts.erase ((RawSubsetCircuit.toSubsetCircuit C).vertex q) =
-            (toCell D).toTopCell.verts.erase ((RawSubsetCircuit.toSubsetCircuit D).vertex q')
-  neighbor_none_exterior :
-    ∀ (C : RawSubsetCircuit.Valid k N) (q : Fin k),
-      neighbor C q = none →
-        IsExteriorFacet (n := Fin k)
-          ((toCell C).toTopCell.verts.erase ((RawSubsetCircuit.toSubsetCircuit C).vertex q))
-  neighbor_ne_cell :
-    ∀ (C : RawSubsetCircuit.Valid k N) (q : Fin k) (D : RawSubsetCircuit.Valid k N),
-      neighbor C q = some D → toCell D ≠ toCell C
-  neighbor_back_to_cell :
-    ∀ (C D E : RawSubsetCircuit.Valid k N) (q q' : Fin k),
-      neighbor C q = some D →
-        (toCell C).toTopCell.verts.erase ((RawSubsetCircuit.toSubsetCircuit C).vertex q) =
-          (toCell D).toTopCell.verts.erase ((RawSubsetCircuit.toSubsetCircuit D).vertex q') →
-        neighbor D q' = some E →
-          toCell E = toCell C
-
-namespace ValidSubsetModelData
-
-noncomputable def toSubsetModel {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (D : ValidSubsetModelData k N) : SubsetModel k N where
-  CellCode := RawSubsetCircuit.Valid k N
-  fintypeCellCode := RawSubsetCircuit.instFintypeValid k N
-  decidableEqCellCode := RawSubsetCircuit.instDecidableEqValid k N
-  circuit := RawSubsetCircuit.toSubsetCircuit
-  toCell := D.toCell
-  codeOf := D.codeOf
-  toCell_codeOf := D.toCell_codeOf
-  codeOf_toCell := D.codeOf_toCell
-  cell_verts := D.cell_verts
-  neighbor := D.neighbor
-  neighbor_shares_facet := D.neighbor_shares_facet
-  neighbor_none_exterior := D.neighbor_none_exterior
-  neighbor_ne_cell := D.neighbor_ne_cell
-  neighbor_back_to_cell := D.neighbor_back_to_cell
-
-end ValidSubsetModelData
-
-/--
-Finite circuit presentation of all global alcove cells.
-
-`CellCode` is intended to be the Lam-Postnikov minimal-circuit/permutation code.  The fields
-below are exactly the missing finite geometry:
-* every semantic `AlcoveCell` has a circuit code and vice versa;
-* the vertices of the semantic cell are the vertices of the circuit;
-* `neighbor C q` is the cell across the facet obtained by deleting the `q`-th circuit vertex,
-  or `none` exactly at a true exterior facet.
-
-Once this is instantiated by the explicit circuit/permutation construction, the existing
-Sperner parity machinery receives a `GlobalAlcoveChartSystem` without further geometric work.
--/
-structure Model (k N : ℕ) [NeZero k] [Fact (1 < k)] where
-  CellCode : Type*
-  fintypeCellCode : Fintype CellCode
-  decidableEqCellCode : DecidableEq CellCode
-  circuit : CellCode → Code k N
-  toCell : CellCode → AlcoveCell k N
-  codeOf : AlcoveCell k N → CellCode
-  toCell_codeOf : ∀ cell : AlcoveCell k N, toCell (codeOf cell) = cell
-  codeOf_toCell : ∀ C : CellCode, codeOf (toCell C) = C
-  cell_verts :
-    ∀ C : CellCode, (toCell C).toTopCell.verts = (circuit C).verts
-  neighbor : CellCode → Fin k → Option CellCode
-  neighbor_shares_facet :
-    ∀ (C : CellCode) (q : Fin k) (D : CellCode),
-      neighbor C q = some D →
-        ∃ q' : Fin k,
-          (toCell C).toTopCell.verts.erase ((circuit C).vertex q) =
-            (toCell D).toTopCell.verts.erase ((circuit D).vertex q')
-  neighbor_none_exterior :
-    ∀ (C : CellCode) (q : Fin k),
-      neighbor C q = none →
-        IsExteriorFacet (n := Fin k)
-          ((toCell C).toTopCell.verts.erase ((circuit C).vertex q))
-  neighbor_ne_cell :
-    ∀ (C : CellCode) (q : Fin k) (D : CellCode),
-      neighbor C q = some D → toCell D ≠ toCell C
-  neighbor_back_to_cell :
-    ∀ (C D E : CellCode) (q q' : Fin k),
-      neighbor C q = some D →
-        (toCell C).toTopCell.verts.erase ((circuit C).vertex q) =
-          (toCell D).toTopCell.verts.erase ((circuit D).vertex q') →
-        neighbor D q' = some E →
-          toCell E = toCell C
-
-namespace Model
-
-lemma vertex_mem_cell {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (M : Model k N) (C : M.CellCode) (q : Fin k) :
-    (M.circuit C).vertex q ∈ (M.toCell C).toTopCell.verts := by
-  rw [M.cell_verts C]
-  exact (M.circuit C).vertex_mem_verts q
-
-lemma cell_verts_eq_image {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (M : Model k N) (C : M.CellCode) :
-    (M.toCell C).toTopCell.verts =
-      (Finset.univ : Finset (Fin k)).image (fun q => (M.circuit C).vertex q) := by
-  rw [M.cell_verts C, Code.verts]
-
-noncomputable def toGlobalAlcoveChartSystem {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (M : Model k N) : GlobalAlcoveChartSystem k N where
-  Code := M.CellCode
-  fintypeCode := M.fintypeCellCode
-  decidableEqCode := M.decidableEqCellCode
-  toCell := M.toCell
-  codeOf := M.codeOf
-  toCell_codeOf := M.toCell_codeOf
-  codeOf_toCell := M.codeOf_toCell
-  vertex := fun C q => (M.circuit C).vertex q
-  vertex_mem := M.vertex_mem_cell
-  verts_eq_image := M.cell_verts_eq_image
-  vertex_injective := fun C => (M.circuit C).vertex_injective
-  facet_index_exists := by
-    intro C face hface
-    rw [TopCell.mem_facets_iff_exists_erase] at hface
-    obtain ⟨v, hv, hface_eq⟩ := hface
-    rw [M.cell_verts C, Code.mem_verts] at hv
-    obtain ⟨q, hq⟩ := hv
-    refine ⟨q, ?_⟩
-    rw [hface_eq, M.cell_verts C, ← hq]
-  neighbor := M.neighbor
-  neighbor_shares_facet := M.neighbor_shares_facet
-  neighbor_none_exterior := M.neighbor_none_exterior
-  neighbor_ne_cell := M.neighbor_ne_cell
-  neighbor_back_to_cell := M.neighbor_back_to_cell
-
-noncomputable def toInteriorFacetPairingData {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (M : Model k N) : AlcoveCell.InteriorFacetPairingData k N :=
-  M.toGlobalAlcoveChartSystem.toInteriorFacetPairingData
-
-lemma nonempty_interiorFacetPairingData {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (M : Model k N) : Nonempty (AlcoveCell.InteriorFacetPairingData k N) :=
-  ⟨M.toInteriorFacetPairingData⟩
-
-noncomputable def toAlcoveSpernerData {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (M : Model k N) (E : AlcoveCell.ExteriorDoorParityData k N) :
-    AlcoveCell.AlcoveSpernerData k N where
-  interior := M.toInteriorFacetPairingData
-  exterior := E
-
-lemma nonempty_alcoveSpernerData {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (M : Model k N) (E : AlcoveCell.ExteriorDoorParityData k N) :
-    Nonempty (AlcoveCell.AlcoveSpernerData k N) :=
-  ⟨M.toAlcoveSpernerData E⟩
-
-end Model
-
-namespace SubsetModel
-
-noncomputable def toModel {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (M : SubsetModel k N) : Model k N where
-  CellCode := M.CellCode
-  fintypeCellCode := M.fintypeCellCode
-  decidableEqCellCode := M.decidableEqCellCode
-  circuit := fun C => (M.circuit C).toCode
-  toCell := M.toCell
-  codeOf := M.codeOf
-  toCell_codeOf := M.toCell_codeOf
-  codeOf_toCell := M.codeOf_toCell
-  cell_verts := M.cell_verts
-  neighbor := M.neighbor
-  neighbor_shares_facet := by
-    intro C q D hnei
-    exact M.neighbor_shares_facet C q D hnei
-  neighbor_none_exterior := by
-    intro C q hnei
-    exact M.neighbor_none_exterior C q hnei
-  neighbor_ne_cell := M.neighbor_ne_cell
-  neighbor_back_to_cell := M.neighbor_back_to_cell
-
-noncomputable def toInteriorFacetPairingData {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (M : SubsetModel k N) : AlcoveCell.InteriorFacetPairingData k N :=
-  M.toModel.toInteriorFacetPairingData
-
-noncomputable def toAlcoveSpernerData {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (M : SubsetModel k N) (E : AlcoveCell.ExteriorDoorParityData k N) :
-    AlcoveCell.AlcoveSpernerData k N :=
-  M.toModel.toAlcoveSpernerData E
-
-end SubsetModel
-
-namespace ValidSubsetModelData
-
-noncomputable def toInteriorFacetPairingData {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (D : ValidSubsetModelData k N) : AlcoveCell.InteriorFacetPairingData k N :=
-  D.toSubsetModel.toInteriorFacetPairingData
-
-noncomputable def toAlcoveSpernerData {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (D : ValidSubsetModelData k N) (E : AlcoveCell.ExteriorDoorParityData k N) :
-    AlcoveCell.AlcoveSpernerData k N :=
-  D.toSubsetModel.toAlcoveSpernerData E
-
-lemma nonempty_interiorFacetPairingData {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (D : ValidSubsetModelData k N) :
-    Nonempty (AlcoveCell.InteriorFacetPairingData k N) :=
-  ⟨D.toInteriorFacetPairingData⟩
-
-lemma nonempty_alcoveSpernerData {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (D : ValidSubsetModelData k N) (E : AlcoveCell.ExteriorDoorParityData k N) :
-    Nonempty (AlcoveCell.AlcoveSpernerData k N) :=
-  ⟨D.toAlcoveSpernerData E⟩
-
-end ValidSubsetModelData
-
-namespace RawSubsetCircuit
-
-noncomputable def validToTopCell {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Valid k N) : TopCell (n := Fin k) N :=
-  (toSubsetCircuit C).toCode.toTopCell
-
-lemma swapCandidate_vertex_of_ne {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Valid k N) (q t : Fin k) (htq : t ≠ q)
-    (hvalid : (swapCandidate C q).IsValid) :
-    (toSubsetCircuit ⟨swapCandidate C q, hvalid⟩).vertex t =
-      (toSubsetCircuit C).vertex t := by
-  apply Subtype.ext
-  funext i
-  simp [SubsetCircuit.vertex, toSubsetCircuit, swapCandidate, htq]
-
-lemma swapCandidate_facet_eq {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Valid k N) (q : Fin k) (hvalid : (swapCandidate C q).IsValid) :
-    (validToTopCell C).verts.erase ((toSubsetCircuit C).vertex q) =
-      (validToTopCell ⟨swapCandidate C q, hvalid⟩).verts.erase
-        ((toSubsetCircuit ⟨swapCandidate C q, hvalid⟩).vertex q) := by
-  classical
-  change
-    ((Finset.univ : Finset (Fin k)).image (toSubsetCircuit C).vertex).erase
-        ((toSubsetCircuit C).vertex q) =
-      ((Finset.univ : Finset (Fin k)).image
-        (toSubsetCircuit ⟨swapCandidate C q, hvalid⟩).vertex).erase
-        ((toSubsetCircuit ⟨swapCandidate C q, hvalid⟩).vertex q)
-  exact image_univ_erase_eq_of_eq_off
-    (toSubsetCircuit C).vertex_injective
-    (toSubsetCircuit ⟨swapCandidate C q, hvalid⟩).vertex_injective
-    q (by
-      intro t htq
-      exact (swapCandidate_vertex_of_ne C q t htq hvalid).symm)
-
-lemma swapCandidate_facet_mem {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (C : Valid k N) (q : Fin k) (hvalid : (swapCandidate C q).IsValid) :
-    (validToTopCell C).verts.erase ((toSubsetCircuit C).vertex q) ∈
-      (validToTopCell ⟨swapCandidate C q, hvalid⟩).facets := by
-  classical
-  rw [swapCandidate_facet_eq C q hvalid]
-  rw [TopCell.mem_facets_iff_exists_erase]
-  exact ⟨(toSubsetCircuit ⟨swapCandidate C q, hvalid⟩).vertex q,
-    by
-      change (toSubsetCircuit ⟨swapCandidate C q, hvalid⟩).vertex q ∈
-        (toSubsetCircuit ⟨swapCandidate C q, hvalid⟩).toCode.verts
-      exact (toSubsetCircuit ⟨swapCandidate C q, hvalid⟩).toCode.vertex_mem_verts q,
-    rfl⟩
-
-structure ValidIncidenceParityCertificate {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k) where
-  mate :
-    (Σ _cell : Valid k N, Finset (simplexGrid (n := Fin k) N)) →
-      (Σ _cell : Valid k N, Finset (simplexGrid (n := Fin k) N))
-  mate_mem : ∀ incidence ∈
-      familyInternalDoorIncidences (n := Fin k) validToTopCell c r,
-    mate incidence ∈ familyInternalDoorIncidences (n := Fin k) validToTopCell c r
-  mate_involutive : ∀ incidence ∈
-      familyInternalDoorIncidences (n := Fin k) validToTopCell c r,
-    mate (mate incidence) = incidence
-  mate_fixedPointFree : ∀ incidence ∈
-      familyInternalDoorIncidences (n := Fin k) validToTopCell c r,
-    mate incidence ≠ incidence
-  exterior_odd :
-    Odd (familyExteriorDoorIncidences (n := Fin k) validToTopCell c r).card
-
-structure ValidNeighborParityData {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k) where
-  neighborData :
-    FamilyInteriorFacetNeighborData (n := Fin k)
-      (Cell := Valid k N) validToTopCell
-  exterior_odd :
-    Odd (familyExteriorDoorIncidences (n := Fin k) validToTopCell c r).card
-
-structure ValidPseudomanifoldData (k N : ℕ) [NeZero k] [Fact (1 < k)] where
-  other_exists_unique :
-    ∀ (C : Valid k N) (face : Finset (simplexGrid (n := Fin k) N)),
-      face ∈ (validToTopCell C).facets →
-      ¬ IsExteriorFacet (n := Fin k) face →
-        ∃ D : Valid k N,
-          D ≠ C ∧
-          face ∈ (validToTopCell D).facets ∧
-          ∀ E : Valid k N,
-            face ∈ (validToTopCell E).facets → E = C ∨ E = D
-
-namespace ValidPseudomanifoldData
-
-noncomputable def other {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (D : ValidPseudomanifoldData k N)
-    (C : Valid k N) (face : Finset (simplexGrid (n := Fin k) N)) :
-    Valid k N := by
-  classical
-  exact
-    if hfacet : face ∈ (validToTopCell C).facets then
-      if hint : ¬ IsExteriorFacet (n := Fin k) face then
-        Classical.choose (D.other_exists_unique C face hfacet hint)
-      else C
-    else C
-
-lemma other_spec {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (D : ValidPseudomanifoldData k N)
-    {C : Valid k N} {face : Finset (simplexGrid (n := Fin k) N)}
-    (hfacet : face ∈ (validToTopCell C).facets)
-    (hint : ¬ IsExteriorFacet (n := Fin k) face) :
-    let C' := D.other C face
-    C' ≠ C ∧
-      face ∈ (validToTopCell C').facets ∧
-      ∀ E : Valid k N,
-        face ∈ (validToTopCell E).facets → E = C ∨ E = C' := by
-  classical
-  unfold other
-  rw [dif_pos hfacet, dif_pos hint]
-  exact Classical.choose_spec (D.other_exists_unique C face hfacet hint)
-
-noncomputable def toFamilyInteriorFacetNeighborData {k N : ℕ} [NeZero k] [Fact (1 < k)]
-    (D : ValidPseudomanifoldData k N) :
-    FamilyInteriorFacetNeighborData (n := Fin k)
-      (Cell := Valid k N) validToTopCell where
-  other := D.other
-  other_mem := by
-    intro C face hfacet hint
-    exact (D.other_spec hfacet hint).2.1
-  other_ne := by
-    intro C face hfacet hint
-    exact (D.other_spec hfacet hint).1
-  other_involutive := by
-    intro C face hfacet hint
-    let C' := D.other C face
-    have hspec := D.other_spec hfacet hint
-    have hfacet' : face ∈ (validToTopCell C').facets := hspec.2.1
-    have hspec' := D.other_spec hfacet' hint
-    have hother_facet : face ∈ (validToTopCell (D.other C' face)).facets := hspec'.2.1
-    have hother_ne : D.other C' face ≠ C' := hspec'.1
-    rcases hspec.2.2 (D.other C' face) hother_facet with hEq | hEq
-    · exact hEq
-    · exact False.elim (hother_ne hEq)
-
-end ValidPseudomanifoldData
-
-noncomputable def validNeighborParityData_of_pseudomanifold_exterior {k N : ℕ}
-    [NeZero k] [Fact (1 < k)]
-    {c : simplexGrid (n := Fin k) N → Fin k} {r : Fin k}
-    (P : ValidPseudomanifoldData k N)
-    (hexterior :
-      Odd (familyExteriorDoorIncidences (n := Fin k) validToTopCell c r).card) :
-    ValidNeighborParityData c r where
-  neighborData := P.toFamilyInteriorFacetNeighborData
-  exterior_odd := hexterior
-
-noncomputable def ValidNeighborParityData.toValidIncidenceParityCertificate {k N : ℕ}
-    [NeZero k] [Fact (1 < k)]
-    {c : simplexGrid (n := Fin k) N → Fin k} {r : Fin k}
-    (D : ValidNeighborParityData c r) :
-    ValidIncidenceParityCertificate c r where
-  mate := D.neighborData.incidenceMate c r
-  mate_mem := D.neighborData.incidenceMate_mem c r
-  mate_involutive := D.neighborData.incidenceMate_involutive c r
-  mate_fixedPointFree := D.neighborData.incidenceMate_fixedPointFree c r
-  exterior_odd := D.exterior_odd
-
-lemma even_card_valid_internalDoorIncidences_of_fixedPointFree_mate {k N : ℕ}
-    [NeZero k] [Fact (1 < k)]
-    (c : simplexGrid (n := Fin k) N → Fin k) (r : Fin k)
-    (cert : ValidIncidenceParityCertificate c r) :
-    Even (familyInternalDoorIncidences (n := Fin k) validToTopCell c r).card := by
-  exact even_card_finset_of_fixedPointFree_involution
-    (familyInternalDoorIncidences (n := Fin k) validToTopCell c r)
-    cert.mate cert.mate_mem cert.mate_involutive cert.mate_fixedPointFree
-
-lemma exists_fullyLabeledUnitCluster_of_validIncidenceParityCertificate {k N : ℕ}
-    [NeZero k] [Fact (1 < k)]
-    {c : simplexGrid (n := Fin k) N → Fin k} {r : Fin k}
-    (cert : ValidIncidenceParityCertificate c r) :
-    ∃ base : simplexGrid (n := Fin k) N,
-      FullyLabeledUnitCluster (n := Fin k) c base := by
-  exact exists_fullyLabeledUnitCluster_of_family_internal_even_exterior_odd
-    (n := Fin k) validToTopCell c r
-    (even_card_valid_internalDoorIncidences_of_fixedPointFree_mate c r cert)
-    cert.exterior_odd
-
-lemma exists_fullyLabeledUnitCluster_of_validNeighborParityData {k N : ℕ}
-    [NeZero k] [Fact (1 < k)]
-    {c : simplexGrid (n := Fin k) N → Fin k} {r : Fin k}
-    (D : ValidNeighborParityData c r) :
-    ∃ base : simplexGrid (n := Fin k) N,
-      FullyLabeledUnitCluster (n := Fin k) c base :=
-  exists_fullyLabeledUnitCluster_of_validIncidenceParityCertificate
-    D.toValidIncidenceParityCertificate
-
-end RawSubsetCircuit
-
-end CircuitAlcove
-
-namespace ChartAlcoveCell
-
-noncomputable instance instFintype {k N : ℕ} [NeZero k]
-    (Sys : HypersimplexAlcoveChartSystem k) :
-    Fintype (ChartAlcoveCell k N Sys) := by
-  classical
-  letI (m : ℕ) : Fintype (Sys.Chart m) := Sys.fintypeChart m
-  refine Fintype.ofEquiv (Σ A : CubeSliceAnchor k N, Sys.Chart A.m) ?_
-  refine
-    { toFun := fun p => ⟨p.1, p.2⟩
-      invFun := fun cell => ⟨cell.anchor, cell.chart⟩
-      left_inv := ?_
-      right_inv := ?_ }
-  · intro p
-    cases p
-    rfl
-  · intro cell
-    cases cell
-    rfl
-
-noncomputable instance instDecidableEq {k N : ℕ} [NeZero k]
-    (Sys : HypersimplexAlcoveChartSystem k) :
-    DecidableEq (ChartAlcoveCell k N Sys) :=
-  Classical.decEq _
-
-noncomputable def toAlcoveCell {k N : ℕ} [NeZero k]
-    {Sys : HypersimplexAlcoveChartSystem k} (cell : ChartAlcoveCell k N Sys) :
-    AlcoveCell k N where
-  anchor := cell.anchor
-  alcove := Sys.toAlcove cell.chart
-
-noncomputable def vertex {k N : ℕ} [NeZero k]
-    {Sys : HypersimplexAlcoveChartSystem k} (cell : ChartAlcoveCell k N Sys)
-    (q : Fin k) : simplexGrid (n := Fin k) N :=
-  sliceVertex cell.anchor (Sys.vertex cell.chart q)
-    ((Sys.toAlcove cell.chart).each_card
-      (Sys.vertex cell.chart q) (Sys.vertex_mem cell.chart q))
-
-lemma vertex_mem_toAlcoveCell {k N : ℕ} [NeZero k]
-    {Sys : HypersimplexAlcoveChartSystem k} (cell : ChartAlcoveCell k N Sys)
-    (q : Fin k) :
-    cell.vertex q ∈ cell.toAlcoveCell.verts := by
-  classical
-  rw [AlcoveCell.mem_verts]
-  exact ⟨Sys.vertex cell.chart q, Sys.vertex_mem cell.chart q, rfl⟩
-
-noncomputable def toTopCell {k N : ℕ} [NeZero k]
-    {Sys : HypersimplexAlcoveChartSystem k} (cell : ChartAlcoveCell k N Sys) :
-    TopCell (n := Fin k) N :=
-  cell.toAlcoveCell.toTopCell
-
-lemma toTopCell_verts_eq_image_vertex {k N : ℕ} [NeZero k]
-    {Sys : HypersimplexAlcoveChartSystem k} (cell : ChartAlcoveCell k N Sys) :
-    cell.toTopCell.verts = (Finset.univ : Finset (Fin k)).image (cell.vertex) := by
-  classical
-  apply Finset.ext
-  intro a
-  constructor
-  · intro ha
-    change a ∈ cell.toAlcoveCell.verts at ha
-    rw [AlcoveCell.mem_verts] at ha
-    obtain ⟨S, hS, hSa⟩ := ha
-    have hSimg : S ∈ (Finset.univ : Finset (Fin k)).image (Sys.vertex cell.chart) := by
-      change S ∈ (Sys.toAlcove cell.chart).verts at hS
-      rwa [Sys.verts_eq_image cell.chart] at hS
-    rw [Finset.mem_image] at hSimg
-    obtain ⟨q, hq, hqS⟩ := hSimg
-    rw [Finset.mem_image]
-    refine ⟨q, hq, ?_⟩
-    subst S
-    simpa [vertex] using hSa
-  · intro ha
-    rw [Finset.mem_image] at ha
-    obtain ⟨q, _hq, hqa⟩ := ha
-    rw [← hqa]
-    exact cell.vertex_mem_toAlcoveCell q
-
-lemma mem_facets_iff_exists_erase_vertex {k N : ℕ} [NeZero k]
-    {Sys : HypersimplexAlcoveChartSystem k} (cell : ChartAlcoveCell k N Sys)
-    {face : Finset (simplexGrid (n := Fin k) N)} :
-    face ∈ cell.toTopCell.facets ↔
-      ∃ q : Fin k, face = cell.toTopCell.verts.erase (cell.vertex q) := by
-  classical
-  constructor
-  · intro hface
-    have hface' : face ∈ cell.toAlcoveCell.toTopCell.facets := hface
-    obtain ⟨S, hS, hface_eq⟩ :=
-      (AlcoveCell.mem_facets_iff_exists_facetErasing cell.toAlcoveCell).mp hface'
-    have hSimg : S ∈ (Finset.univ : Finset (Fin k)).image (Sys.vertex cell.chart) := by
-      change S ∈ (Sys.toAlcove cell.chart).verts at hS
-      rwa [Sys.verts_eq_image cell.chart] at hS
-    rw [Finset.mem_image] at hSimg
-    obtain ⟨q, _hqmem, hqS⟩ := hSimg
-    refine ⟨q, ?_⟩
-    subst S
-    simpa [toTopCell, vertex, toAlcoveCell, AlcoveCell.facetErasing] using hface_eq
-  · rintro ⟨q, rfl⟩
-    have hv : cell.vertex q ∈ cell.toAlcoveCell.verts :=
-      cell.vertex_mem_toAlcoveCell q
-    rw [toTopCell, TopCell.mem_facets_iff_exists_erase]
-    exact ⟨cell.vertex q, hv, rfl⟩
-
-noncomputable def neighborCell {k N : ℕ} [NeZero k]
-    {Sys : HypersimplexAlcoveChartSystem k} (cell : ChartAlcoveCell k N Sys)
-    (q : Fin k) : Option (ChartAlcoveCell k N Sys) :=
-  (Sys.neighbor cell.chart q).map fun chart' =>
-    { anchor := cell.anchor, chart := chart' }
-
-structure BoundaryData {k : ℕ} [NeZero k] (Sys : HypersimplexAlcoveChartSystem k) where
-  neighbor_none_exterior :
-    ∀ {N : ℕ} (cell : ChartAlcoveCell k N Sys) (q : Fin k),
-      cell.neighborCell q = none →
-        IsExteriorFacet (n := Fin k) (cell.toTopCell.verts.erase (cell.vertex q))
-
-lemma neighborCell_none_imp_exterior {k N : ℕ} [NeZero k]
-    {Sys : HypersimplexAlcoveChartSystem k} (B : BoundaryData Sys)
-    (cell : ChartAlcoveCell k N Sys)
-    (q : Fin k) (hnei : cell.neighborCell q = none) :
-    IsExteriorFacet (n := Fin k)
-      (cell.toTopCell.verts.erase (cell.vertex q)) :=
-  B.neighbor_none_exterior cell q hnei
-
-lemma exists_neighborCell_of_not_exterior {k N : ℕ} [NeZero k]
-    {Sys : HypersimplexAlcoveChartSystem k} (B : BoundaryData Sys)
-    (cell : ChartAlcoveCell k N Sys)
-    (q : Fin k)
-    (hint : ¬ IsExteriorFacet (n := Fin k)
-      (cell.toTopCell.verts.erase (cell.vertex q))) :
-    ∃ cell' : ChartAlcoveCell k N Sys, cell.neighborCell q = some cell' := by
-  classical
-  cases hnei : cell.neighborCell q with
-  | none =>
-      exact False.elim (hint (cell.neighborCell_none_imp_exterior B q hnei))
-  | some cell' =>
-      exact ⟨cell', rfl⟩
-
-lemma neighborCell_shares_facet {k N : ℕ} [NeZero k]
-    {Sys : HypersimplexAlcoveChartSystem k} {cell cell' : ChartAlcoveCell k N Sys}
-    {q : Fin k} (hnei : cell.neighborCell q = some cell') :
-    ∃ q' : Fin k,
-      cell.toTopCell.verts.erase (cell.vertex q) =
-        cell'.toTopCell.verts.erase (cell'.vertex q') := by
-  classical
-  cases hchart : Sys.neighbor cell.chart q with
-  | none =>
-      simp [neighborCell, hchart] at hnei
-  | some chart' =>
-      have hcell' : cell' = { anchor := cell.anchor, chart := chart' } := by
-        simpa [neighborCell, hchart] using hnei.symm
-      subst cell'
-      obtain ⟨q', hfacet⟩ := Sys.neighbor_shares_facet cell.chart q chart' hchart
-      refine ⟨q', ?_⟩
-      have hgrid :=
-        AlcoveCell.facetErasing_eq_of_erase_eq cell.toAlcoveCell
-          ({ anchor := cell.anchor, alcove := Sys.toAlcove chart' } : AlcoveCell k N)
-          rfl
-          (Sys.vertex_mem cell.chart q) (Sys.vertex_mem chart' q') hfacet
-      simpa [toTopCell, vertex, toAlcoveCell, AlcoveCell.facetErasing] using hgrid
-
-@[irreducible]
-noncomputable def other {k N : ℕ} [NeZero k]
-    {Sys : HypersimplexAlcoveChartSystem k} (B : BoundaryData Sys)
-    (cell : ChartAlcoveCell k N Sys)
-    (face : Finset (simplexGrid (n := Fin k) N)) :
-    ChartAlcoveCell k N Sys := by
-  classical
-  exact
-    if hfacet : face ∈ cell.toTopCell.facets then
-      let q := Classical.choose ((cell.mem_facets_iff_exists_erase_vertex).mp hfacet)
-      if hint : ¬ IsExteriorFacet (n := Fin k) face then
-        Classical.choose
-          (cell.exists_neighborCell_of_not_exterior B q (by
-            have hq := Classical.choose_spec
-              ((cell.mem_facets_iff_exists_erase_vertex).mp hfacet)
-            rwa [hq] at hint))
-      else cell
-    else cell
-
-lemma other_eq_neighbor_of_nonexterior_facet {k N : ℕ} [NeZero k]
-    {Sys : HypersimplexAlcoveChartSystem k} (B : BoundaryData Sys)
-    {cell : ChartAlcoveCell k N Sys}
-    {face : Finset (simplexGrid (n := Fin k) N)}
-    (hfacet : face ∈ cell.toTopCell.facets)
-    (hint : ¬ IsExteriorFacet (n := Fin k) face) :
-    let q := Classical.choose ((cell.mem_facets_iff_exists_erase_vertex).mp hfacet)
-    cell.neighborCell q = some (other B cell face) := by
-  classical
-  unfold other
-  rw [dif_pos hfacet, dif_pos hint]
-  exact Classical.choose_spec
-    (cell.exists_neighborCell_of_not_exterior B
-      (Classical.choose ((cell.mem_facets_iff_exists_erase_vertex).mp hfacet)) (by
-        have hq := Classical.choose_spec
-          ((cell.mem_facets_iff_exists_erase_vertex).mp hfacet)
-        rwa [hq] at hint))
-
-lemma other_mem_of_nonexterior {k N : ℕ} [NeZero k]
-    {Sys : HypersimplexAlcoveChartSystem k} (B : BoundaryData Sys)
-    {cell : ChartAlcoveCell k N Sys}
-    {face : Finset (simplexGrid (n := Fin k) N)}
-    (hfacet : face ∈ cell.toTopCell.facets)
-    (hint : ¬ IsExteriorFacet (n := Fin k) face) :
-    face ∈ (other B cell face).toTopCell.facets := by
-  classical
-  let q := Classical.choose ((cell.mem_facets_iff_exists_erase_vertex).mp hfacet)
-  let cell₂ := other B cell face
-  have hq : face = cell.toTopCell.verts.erase (cell.vertex q) :=
-    Classical.choose_spec ((cell.mem_facets_iff_exists_erase_vertex).mp hfacet)
-  have hnei : cell.neighborCell q = some cell₂ := by
-    simpa [q] using other_eq_neighbor_of_nonexterior_facet B hfacet hint
-  obtain ⟨q', hshared⟩ := neighborCell_shares_facet hnei
-  change face ∈ cell₂.toTopCell.facets
-  have hface_eq : face = cell₂.toTopCell.verts.erase (cell₂.vertex q') :=
-    hq.trans hshared
-  rw [hface_eq]
-  have hv : cell₂.vertex q' ∈ cell₂.toAlcoveCell.verts :=
-    cell₂.vertex_mem_toAlcoveCell q'
-  rw [toTopCell, TopCell.mem_facets_iff_exists_erase]
-  exact ⟨cell₂.vertex q', hv, rfl⟩
-
-end ChartAlcoveCell
-
-noncomputable def orderedVertex {k N : ℕ} [NeZero k]
-    (start : simplexGrid (n := Fin k) N) (order : Equiv.Perm (Fin k))
-    (hpos : 0 < start.1 (order 0)) (t : Fin k) :
-    simplexGrid (n := Fin k) N :=
-  if ht : t = 0 then start
-  else
-    transfer (n := Fin k) start
-      (by
-        intro h
-        exact ht (order.injective h).symm)
-      hpos
-
-@[simp]
-lemma orderedVertex_zero {k N : ℕ} [NeZero k]
-    (start : simplexGrid (n := Fin k) N) (order : Equiv.Perm (Fin k))
-    (hpos : 0 < start.1 (order 0)) :
-    orderedVertex start order hpos 0 = start := by
-  simp [orderedVertex]
-
-lemma orderedVertex_of_ne_zero {k N : ℕ} [NeZero k]
-    (start : simplexGrid (n := Fin k) N) (order : Equiv.Perm (Fin k))
-    (hpos : 0 < start.1 (order 0)) {t : Fin k} (ht : t ≠ 0) :
-    orderedVertex start order hpos t =
-      transfer (n := Fin k) start
-        (by
-          intro h
-          exact ht (order.injective h).symm)
-        hpos := by
-  simp [orderedVertex, ht]
-
-lemma unitClose_orderedVertex {k N : ℕ} [NeZero k]
-    (start : simplexGrid (n := Fin k) N) (order : Equiv.Perm (Fin k))
-    (hpos : 0 < start.1 (order 0)) (t : Fin k) :
-    UnitClose (n := Fin k) (orderedVertex start order hpos t) start := by
-  by_cases ht : t = 0
-  · subst t
-    exact unitClose_refl start
-  · rw [orderedVertex_of_ne_zero start order hpos ht]
-    exact unitClose_of_gridStep_symm
-      (gridStep_transfer (n := Fin k) start
-        (by
-          intro h
-          exact ht (order.injective h).symm)
-        hpos)
-
-lemma orderedVertex_apply_source_of_ne_zero {k N : ℕ} [NeZero k]
-    (start : simplexGrid (n := Fin k) N) (order : Equiv.Perm (Fin k))
-    (hpos : 0 < start.1 (order 0)) {t : Fin k} (ht : t ≠ 0) :
-    (orderedVertex start order hpos t).1 (order 0) = start.1 (order 0) - 1 := by
-  rw [orderedVertex_of_ne_zero start order hpos ht]
-  simp
-
-lemma orderedVertex_apply_target_of_ne_zero {k N : ℕ} [NeZero k]
-    (start : simplexGrid (n := Fin k) N) (order : Equiv.Perm (Fin k))
-    (hpos : 0 < start.1 (order 0)) {t : Fin k} (ht : t ≠ 0) :
-    (orderedVertex start order hpos t).1 (order t) = start.1 (order t) + 1 := by
-  rw [orderedVertex_of_ne_zero start order hpos ht]
-  simp
-
-lemma orderedVertex_apply_of_ne_source_target {k N : ℕ} [NeZero k]
-    (start : simplexGrid (n := Fin k) N) (order : Equiv.Perm (Fin k))
-    (hpos : 0 < start.1 (order 0)) {t : Fin k} (ht : t ≠ 0)
-    {j : Fin k} (hj0 : j ≠ order 0) (hjt : j ≠ order t) :
-    (orderedVertex start order hpos t).1 j = start.1 j := by
-  rw [orderedVertex_of_ne_zero start order hpos ht]
-  exact transfer_apply_of_ne (n := Fin k) start
-    (by
-      intro h
-      exact ht (order.injective h).symm)
-    hpos hj0 hjt
-
-lemma orderedVertex_injective {k N : ℕ} [NeZero k]
-    (start : simplexGrid (n := Fin k) N) (order : Equiv.Perm (Fin k))
-    (hpos : 0 < start.1 (order 0)) :
-    Function.Injective (orderedVertex start order hpos) := by
-  intro t u htu
-  by_cases ht : t = 0
-  · subst t
-    by_cases hu : u = 0
-    · exact hu.symm
-    · have hcoord :
-          start.1 (order 0) = (orderedVertex start order hpos u).1 (order 0) := by
-        simpa using congrArg (fun a : simplexGrid (n := Fin k) N => a.1 (order 0)) htu
-      rw [orderedVertex_apply_source_of_ne_zero start order hpos hu] at hcoord
-      exact False.elim (by omega)
-  · by_cases hu : u = 0
-    · subst u
-      have hcoord :
-          (orderedVertex start order hpos t).1 (order 0) = start.1 (order 0) := by
-        simpa using congrArg (fun a : simplexGrid (n := Fin k) N => a.1 (order 0)) htu
-      rw [orderedVertex_apply_source_of_ne_zero start order hpos ht] at hcoord
-      exact False.elim (by omega)
-    · by_contra hne
-      have hord_ne : order t ≠ order u := by
-        intro h
-        exact hne (order.injective h)
-      have hcoord := congrArg (fun a : simplexGrid (n := Fin k) N => a.1 (order t)) htu
-      have hright :
-          (orderedVertex start order hpos u).1 (order t) = start.1 (order t) := by
-        exact orderedVertex_apply_of_ne_source_target start order hpos hu
-          (by
-            intro h
-            exact ht (order.injective h))
-          hord_ne
-      have hcoord' :
-          (orderedVertex start order hpos t).1 (order t) =
-            (orderedVertex start order hpos u).1 (order t) := by
-        simpa using hcoord
-      rw [orderedVertex_apply_target_of_ne_zero start order hpos ht, hright] at hcoord'
-      omega
-
-noncomputable def orderedVerts {k N : ℕ} [NeZero k]
-    (start : simplexGrid (n := Fin k) N) (order : Equiv.Perm (Fin k))
-    (hpos : 0 < start.1 (order 0)) :
-    Finset (simplexGrid (n := Fin k) N) :=
-  (Finset.univ : Finset (Fin k)).image (orderedVertex start order hpos)
-
-lemma mem_orderedVerts {k N : ℕ} [NeZero k]
-    (start : simplexGrid (n := Fin k) N) (order : Equiv.Perm (Fin k))
-    (hpos : 0 < start.1 (order 0)) {a : simplexGrid (n := Fin k) N} :
-    a ∈ orderedVerts start order hpos ↔
-      ∃ t : Fin k, orderedVertex start order hpos t = a := by
-  classical
-  simp [orderedVerts]
-
-lemma card_orderedVerts {k N : ℕ} [NeZero k]
-    (start : simplexGrid (n := Fin k) N) (order : Equiv.Perm (Fin k))
-    (hpos : 0 < start.1 (order 0)) :
-    (orderedVerts start order hpos).card = Fintype.card (Fin k) := by
-  classical
-  rw [orderedVerts, Finset.card_image_of_injective _ (orderedVertex_injective start order hpos)]
-  rfl
-
-noncomputable def orderedTopCell {k N : ℕ} [NeZero k]
-    (start : simplexGrid (n := Fin k) N) (order : Equiv.Perm (Fin k))
-    (hpos : 0 < start.1 (order 0)) :
-    TopCell (n := Fin k) N where
-  verts := orderedVerts start order hpos
-  base := start
-  close := by
-    intro a ha
-    rw [mem_orderedVerts] at ha
-    obtain ⟨t, ht⟩ := ha
-    rw [← ht]
-    exact unitClose_orderedVertex start order hpos t
-  card_verts := card_orderedVerts start order hpos
-
-structure OrderedCell (k N : ℕ) [NeZero k] where
-  start : simplexGrid (n := Fin k) N
-  order : Equiv.Perm (Fin k)
-  source_pos : 0 < start.1 (order 0)
-
-namespace OrderedCell
-
-noncomputable instance instFintype (k N : ℕ) [NeZero k] :
-    Fintype (OrderedCell k N) := by
-  classical
-  refine Fintype.ofEquiv
-    {p : simplexGrid (n := Fin k) N × Equiv.Perm (Fin k) // 0 < p.1.1 (p.2 0)} ?_
-  refine
-    { toFun := fun p => ⟨p.1.1, p.1.2, p.2⟩
-      invFun := fun cell => ⟨(cell.start, cell.order), cell.source_pos⟩
-      left_inv := ?_
-      right_inv := ?_ }
-  · intro p
-    cases p with
-    | mk val h =>
-        cases val
-        rfl
-  · intro cell
-    cases cell
-    rfl
-
-noncomputable def toTopCell {k N : ℕ} [NeZero k] (cell : OrderedCell k N) :
-    TopCell (n := Fin k) N :=
-  orderedTopCell cell.start cell.order cell.source_pos
-
-@[simp]
-lemma toTopCell_verts {k N : ℕ} [NeZero k] (cell : OrderedCell k N) :
-    (cell.toTopCell).verts = orderedVerts cell.start cell.order cell.source_pos :=
-  rfl
-
-@[simp]
-lemma toTopCell_base {k N : ℕ} [NeZero k] (cell : OrderedCell k N) :
-    (cell.toTopCell).base = cell.start :=
-  rfl
-
-lemma vertex_mem_toTopCell {k N : ℕ} [NeZero k] (cell : OrderedCell k N) (t : Fin k) :
-    orderedVertex cell.start cell.order cell.source_pos t ∈ cell.toTopCell.verts := by
-  classical
-  rw [toTopCell_verts, mem_orderedVerts]
-  exact ⟨t, rfl⟩
-
-lemma close_vertex_to_start {k N : ℕ} [NeZero k] (cell : OrderedCell k N) (t : Fin k) :
-    UnitClose (n := Fin k)
-      (orderedVertex cell.start cell.order cell.source_pos t) cell.start :=
-  unitClose_orderedVertex cell.start cell.order cell.source_pos t
-
-end OrderedCell
-
-structure DoorGraphData {N : ℕ} (c : simplexGrid (n := n) N → n) (r : n) where
-  G : SimpleGraph (Option (TopCell (n := n) N))
-  decidableAdj : DecidableRel G.Adj
-  outside_odd : Odd (G.degree none)
-  degree_eq_faceDoors :
-    ∀ cell : TopCell (n := n) N, G.degree (some cell) = (cell.faceDoors c r).card
-
-lemma exists_fullyLabeledUnitCluster_of_doorGraphData {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {c : simplexGrid (n := n) N → n} {r : n}
-    (D : DoorGraphData (n := n) c r) :
-    ∃ base : simplexGrid (n := n) N,
-      FullyLabeledUnitCluster (n := n) c base := by
-  letI := D.decidableAdj
-  exact exists_fullyLabeledUnitCluster_of_door_graph_faceDegrees
-    D.G c r D.outside_odd D.degree_eq_faceDoors
-
-lemma not_forall_unitNeighborhood_image_ne_univ_of_doorGraphData {N : ℕ}
-    [DecidableEq (simplexGrid (n := n) N)]
-    {c : simplexGrid (n := n) N → n} {r : n}
-    (D : DoorGraphData (n := n) c r) :
-    ¬ ∀ base : simplexGrid (n := n) N,
-      ((unitNeighborhood (n := n) N base).image c : Finset n) ≠ Finset.univ := by
-  intro hforall
-  obtain ⟨base, hfull⟩ := exists_fullyLabeledUnitCluster_of_doorGraphData D
-  exact hforall base ((fullyLabeledUnitCluster_iff_image_eq_univ c base).mp hfull)
-
-lemma not_forall_unitNeighborhood_image_ne_univ_of_fin_card_doorGraphData [Nonempty n]
-    {N : ℕ} (c : simplexGrid (n := n) N → n)
-    (hc : ∀ (a : simplexGrid (n := n) N) (i : n), a.1 i = 0 → c a ≠ i)
-    (hfin :
-      ∀ cfin : simplexGrid (n := Fin (Fintype.card n)) N → Fin (Fintype.card n),
-        (∀ (a : simplexGrid (n := Fin (Fintype.card n)) N) (i : Fin (Fintype.card n)),
-          a.1 i = 0 → cfin a ≠ i) →
-          ∃ r : Fin (Fintype.card n),
-            Nonempty (DoorGraphData (n := Fin (Fintype.card n)) cfin r)) :
-    ¬ ∀ base : simplexGrid (n := n) N,
-      ((unitNeighborhood (n := n) N base).image c : Finset n) ≠ Finset.univ := by
-  intro hforall
-  have hcluster :
-      ∃ base : simplexGrid (n := n) N,
-        FullyLabeledUnitCluster (n := n) c base := by
-    refine exists_fullyLabeledUnitCluster_of_fin_card_case c hc ?_
-    intro cfin hcfin
-    obtain ⟨r, ⟨D⟩⟩ := hfin cfin hcfin
-    exact exists_fullyLabeledUnitCluster_of_doorGraphData D
-  obtain ⟨base, hfull⟩ := hcluster
-  exact hforall base ((fullyLabeledUnitCluster_iff_image_eq_univ c base).mp hfull)
-
-lemma not_forall_unitNeighborhood_image_ne_univ_of_fin_card_alcoveCell_odd_sum
-    [Nonempty n] {N : ℕ} (c : simplexGrid (n := n) N → n)
-    (hc : ∀ (a : simplexGrid (n := n) N) (i : n), a.1 i = 0 → c a ≠ i)
-    (hfin :
-      ∀ cfin : simplexGrid (n := Fin (Fintype.card n)) N → Fin (Fintype.card n),
-        (∀ (a : simplexGrid (n := Fin (Fintype.card n)) N) (i : Fin (Fintype.card n)),
-          a.1 i = 0 → cfin a ≠ i) →
-          ∃ r : Fin (Fintype.card n),
-            Odd ((Finset.univ : Finset (AlcoveCell (Fintype.card n) N)).sum fun cell =>
-              ((AlcoveCell.toTopCell cell).faceDoors cfin r).card)) :
-    ¬ ∀ base : simplexGrid (n := n) N,
-      ((unitNeighborhood (n := n) N base).image c : Finset n) ≠ Finset.univ := by
-  intro hforall
-  have hcluster :
-      ∃ base : simplexGrid (n := n) N,
-        FullyLabeledUnitCluster (n := n) c base := by
-    refine exists_fullyLabeledUnitCluster_of_fin_card_case c hc ?_
-    intro cfin hcfin
-    obtain ⟨r, hodd⟩ := hfin cfin hcfin
-    exact exists_fullyLabeledUnitCluster_of_family_odd_sum_faceDoors
-      (fun cell : AlcoveCell (Fintype.card n) N => AlcoveCell.toTopCell cell)
-      cfin r hodd
-  obtain ⟨base, hfull⟩ := hcluster
-  exact hforall base ((fullyLabeledUnitCluster_iff_image_eq_univ c base).mp hfull)
-
-lemma not_forall_unitNeighborhood_image_ne_univ_of_fin_card_alcoveCell_incidence_parity
-    [Nonempty n] {N : ℕ} (c : simplexGrid (n := n) N → n)
-    (hc : ∀ (a : simplexGrid (n := n) N) (i : n), a.1 i = 0 → c a ≠ i)
-    (hfin :
-      ∀ cfin : simplexGrid (n := Fin (Fintype.card n)) N → Fin (Fintype.card n),
-        (∀ (a : simplexGrid (n := Fin (Fintype.card n)) N) (i : Fin (Fintype.card n)),
-          a.1 i = 0 → cfin a ≠ i) →
-          ∃ r : Fin (Fintype.card n),
-            Even (AlcoveCell.internalDoorIncidences cfin r).card ∧
-              Odd (AlcoveCell.exteriorDoorIncidences cfin r).card) :
-    ¬ ∀ base : simplexGrid (n := n) N,
-      ((unitNeighborhood (n := n) N base).image c : Finset n) ≠ Finset.univ := by
-  intro hforall
-  have hcluster :
-      ∃ base : simplexGrid (n := n) N,
-        FullyLabeledUnitCluster (n := n) c base := by
-    refine exists_fullyLabeledUnitCluster_of_fin_card_case c hc ?_
-    intro cfin hcfin
-    obtain ⟨r, hinternal, hexterior⟩ := hfin cfin hcfin
-    exact AlcoveCell.exists_fullyLabeledUnitCluster_of_internal_even_exterior_odd
-      cfin r hinternal hexterior
-  obtain ⟨base, hfull⟩ := hcluster
-  exact hforall base ((fullyLabeledUnitCluster_iff_image_eq_univ c base).mp hfull)
-
-lemma not_forall_unitNeighborhood_image_ne_univ_of_fin_card_alcoveCell_certificate
-    [Nonempty n] {N : ℕ} (c : simplexGrid (n := n) N → n)
-    (hc : ∀ (a : simplexGrid (n := n) N) (i : n), a.1 i = 0 → c a ≠ i)
-    (hfin :
-      ∀ cfin : simplexGrid (n := Fin (Fintype.card n)) N → Fin (Fintype.card n),
-        (∀ (a : simplexGrid (n := Fin (Fintype.card n)) N) (i : Fin (Fintype.card n)),
-          a.1 i = 0 → cfin a ≠ i) →
-          ∃ r : Fin (Fintype.card n),
-            Nonempty (AlcoveCell.IncidenceParityCertificate cfin r)) :
-    ¬ ∀ base : simplexGrid (n := n) N,
-      ((unitNeighborhood (n := n) N base).image c : Finset n) ≠ Finset.univ := by
-  intro hforall
-  have hcluster :
-      ∃ base : simplexGrid (n := n) N,
-        FullyLabeledUnitCluster (n := n) c base := by
-    refine exists_fullyLabeledUnitCluster_of_fin_card_case c hc ?_
-    intro cfin hcfin
-    obtain ⟨r, ⟨cert⟩⟩ := hfin cfin hcfin
-    exact AlcoveCell.exists_fullyLabeledUnitCluster_of_incidenceParityCertificate cert
-  obtain ⟨base, hfull⟩ := hcluster
-  exact hforall base ((fullyLabeledUnitCluster_iff_image_eq_univ c base).mp hfull)
-
-lemma not_forall_unitNeighborhood_image_ne_univ_of_fin_card_validCircuit_certificate
-    [Nonempty n] [Fact (1 < Fintype.card n)] {N : ℕ}
-    (c : simplexGrid (n := n) N → n)
-    (hc : ∀ (a : simplexGrid (n := n) N) (i : n), a.1 i = 0 → c a ≠ i)
-    (hfin :
-      ∀ cfin : simplexGrid (n := Fin (Fintype.card n)) N → Fin (Fintype.card n),
-        (∀ (a : simplexGrid (n := Fin (Fintype.card n)) N) (i : Fin (Fintype.card n)),
-          a.1 i = 0 → cfin a ≠ i) →
-          ∃ r : Fin (Fintype.card n),
-            Nonempty
-              (CircuitAlcove.RawSubsetCircuit.ValidIncidenceParityCertificate cfin r)) :
-    ¬ ∀ base : simplexGrid (n := n) N,
-      ((unitNeighborhood (n := n) N base).image c : Finset n) ≠ Finset.univ := by
-  intro hforall
-  have hcluster :
-      ∃ base : simplexGrid (n := n) N,
-        FullyLabeledUnitCluster (n := n) c base := by
-    refine exists_fullyLabeledUnitCluster_of_fin_card_case c hc ?_
-    intro cfin hcfin
-    obtain ⟨r, ⟨cert⟩⟩ := hfin cfin hcfin
-    exact
-      CircuitAlcove.RawSubsetCircuit.exists_fullyLabeledUnitCluster_of_validIncidenceParityCertificate
-        cert
-  obtain ⟨base, hfull⟩ := hcluster
-  exact hforall base ((fullyLabeledUnitCluster_iff_image_eq_univ c base).mp hfull)
-
-lemma not_forall_unitNeighborhood_image_ne_univ_of_fin_card_validCircuit_neighborData
-    [Nonempty n] [Fact (1 < Fintype.card n)] {N : ℕ}
-    (c : simplexGrid (n := n) N → n)
-    (hc : ∀ (a : simplexGrid (n := n) N) (i : n), a.1 i = 0 → c a ≠ i)
-    (hfin :
-      ∀ cfin : simplexGrid (n := Fin (Fintype.card n)) N → Fin (Fintype.card n),
-        (∀ (a : simplexGrid (n := Fin (Fintype.card n)) N) (i : Fin (Fintype.card n)),
-          a.1 i = 0 → cfin a ≠ i) →
-          ∃ r : Fin (Fintype.card n),
-            Nonempty (CircuitAlcove.RawSubsetCircuit.ValidNeighborParityData cfin r)) :
-    ¬ ∀ base : simplexGrid (n := n) N,
-      ((unitNeighborhood (n := n) N base).image c : Finset n) ≠ Finset.univ := by
-  exact not_forall_unitNeighborhood_image_ne_univ_of_fin_card_validCircuit_certificate
-    c hc (by
-      intro cfin hcfin
-      obtain ⟨r, ⟨D⟩⟩ := hfin cfin hcfin
-      exact ⟨r, ⟨D.toValidIncidenceParityCertificate⟩⟩)
-
-lemma not_forall_unitNeighborhood_image_ne_univ_of_fin_card_validCircuit_pseudomanifold
-    [Nonempty n] [Fact (1 < Fintype.card n)] {N : ℕ}
-    (c : simplexGrid (n := n) N → n)
-    (hc : ∀ (a : simplexGrid (n := n) N) (i : n), a.1 i = 0 → c a ≠ i)
-    (P : CircuitAlcove.RawSubsetCircuit.ValidPseudomanifoldData
-      (Fintype.card n) N)
-    (hfinExterior :
-      ∀ cfin : simplexGrid (n := Fin (Fintype.card n)) N → Fin (Fintype.card n),
-        (∀ (a : simplexGrid (n := Fin (Fintype.card n)) N) (i : Fin (Fintype.card n)),
-          a.1 i = 0 → cfin a ≠ i) →
-          ∃ r : Fin (Fintype.card n),
-            Odd (familyExteriorDoorIncidences (n := Fin (Fintype.card n))
-              CircuitAlcove.RawSubsetCircuit.validToTopCell cfin r).card) :
-    ¬ ∀ base : simplexGrid (n := n) N,
-      ((unitNeighborhood (n := n) N base).image c : Finset n) ≠ Finset.univ := by
-  exact not_forall_unitNeighborhood_image_ne_univ_of_fin_card_validCircuit_neighborData
-    c hc (by
-      intro cfin hcfin
-      obtain ⟨r, hexterior⟩ := hfinExterior cfin hcfin
-      exact ⟨r, ⟨
-        CircuitAlcove.RawSubsetCircuit.validNeighborParityData_of_pseudomanifold_exterior
-          P hexterior⟩⟩)
-
-lemma not_forall_unitNeighborhood_image_ne_univ_of_fin_card_orderedCell_odd_sum
-    [Nonempty n] {N : ℕ} (c : simplexGrid (n := n) N → n)
-    (hc : ∀ (a : simplexGrid (n := n) N) (i : n), a.1 i = 0 → c a ≠ i)
-    (hfin :
-      ∀ cfin : simplexGrid (n := Fin (Fintype.card n)) N → Fin (Fintype.card n),
-        (∀ (a : simplexGrid (n := Fin (Fintype.card n)) N) (i : Fin (Fintype.card n)),
-          a.1 i = 0 → cfin a ≠ i) →
-          ∃ r : Fin (Fintype.card n),
-            Odd ((Finset.univ : Finset (OrderedCell (Fintype.card n) N)).sum fun cell =>
-              ((OrderedCell.toTopCell cell).faceDoors cfin r).card)) :
-    ¬ ∀ base : simplexGrid (n := n) N,
-      ((unitNeighborhood (n := n) N base).image c : Finset n) ≠ Finset.univ := by
-  intro hforall
-  have hcluster :
-      ∃ base : simplexGrid (n := n) N,
-        FullyLabeledUnitCluster (n := n) c base := by
-    refine exists_fullyLabeledUnitCluster_of_fin_card_case c hc ?_
-    intro cfin hcfin
-    obtain ⟨r, hodd⟩ := hfin cfin hcfin
-    exact exists_fullyLabeledUnitCluster_of_family_odd_sum_faceDoors
-      (fun cell : OrderedCell (Fintype.card n) N => OrderedCell.toTopCell cell)
-      cfin r hodd
-  obtain ⟨base, hfull⟩ := hcluster
-  exact hforall base ((fullyLabeledUnitCluster_iff_image_eq_univ c base).mp hfull)
-
-end TopCell
-
-omit [DecidableEq n] in
-lemma one_lt_card_of_not_subsingleton [Nonempty n] (h : ¬ Subsingleton n) :
-    1 < Fintype.card n := by
-  by_contra hle
-  exact h (Fintype.card_le_one_iff_subsingleton.mp (by omega))
-
-theorem sperner_grid_not_forall_unit_neighborhood_image_ne_univ [Nonempty n]
-    (N : ℕ) (_hN : 0 < N) (hcardN : Fintype.card n < N)
-    (c : simplexGrid (n := n) N → n)
-    (hc : ∀ (a : simplexGrid (n := n) N) (i : n), a.1 i = 0 → c a ≠ i) :
-    ¬ ∀ base : simplexGrid (n := n) N,
-      ((unitNeighborhood (n := n) N base).image c : Finset n) ≠ Finset.univ := by
-  /-
-  Equivalent contradiction form of the remaining Sperner proof. Under this assumption each unit
-  neighborhood has a missing label; `missingLabelOfNotFull` packages those choices, and the
-  odd-door argument should contradict the boundary behavior above.
-  -/
-  classical
-  by_cases hsub : Subsingleton n
-  · intro hforall
-    haveI := hsub
-    let base : simplexGrid (n := n) N := vertex (n := n) N (Classical.choice ‹Nonempty n›)
-    have hfull :
-        ((unitNeighborhood (n := n) N base).image c : Finset n) = Finset.univ := by
-      apply Finset.ext
-      intro i
+    · intro y; use i
       constructor
-      · intro _hi
-        exact Finset.mem_univ i
-      · intro _hi
-        have hi : i = c base := Subsingleton.elim _ _
-        rw [hi]
-        exact color_mem_unitNeighborhood_image c base
-    exact hforall base hfull
-  ·
-    intro hforall
-    exact
-      (TopCell.not_forall_unitNeighborhood_image_ne_univ_of_fin_card_alcoveCell_certificate
-        c hc (TopCell.AlcoveCell.exists_fin_card_incidenceParityCertificate_of_card_lt
-          (n := n) hcardN)) hforall
+      · exact Finset.mem_singleton.2 (rfl)
+      · intro x hx
+        contradiction
+    · simp only [Finset.card_singleton]
+      rfl
+  · rfl
 
-omit [DecidableEq n] in
-lemma forall_abs_sub_le_mesh {N : ℕ} (a b : simplexGrid (n := n) N) (j : n) :
-    |(a.1 j : ℝ) - (b.1 j : ℝ)| ≤ (N : ℝ) := by
-  have haj_le : a.1 j ≤ N := by
-    have hle : a.1 j ≤ ∑ k, a.1 k :=
-      Finset.single_le_sum (fun k _ => Nat.zero_le (a.1 k)) (Finset.mem_univ j)
-    simpa [a.2] using hle
-  have hbj_le : b.1 j ≤ N := by
-    have hle : b.1 j ≤ ∑ k, b.1 k :=
-      Finset.single_le_sum (fun k _ => Nat.zero_le (b.1 k)) (Finset.mem_univ j)
-    simpa [b.2] using hle
-  rw [abs_sub_le_iff]
+
+
+omit [Inhabited T] [DecidableEq T] [DecidableEq Idx] in
+lemma outsidedoor_is_singleton (h : IST.isOutsideDoor τ  D) :  τ = Finset.empty ∧  ∃ i, D = {i} := by
+  obtain ⟨h1, h2⟩ := h
+  subst h2
+  obtain ⟨_,h3⟩ := h1
+  replace h4 : D.card = 1 := by
+    simp_all
+    rfl
+  exact ⟨rfl, Finset.card_eq_one.1 h4⟩
+
+
+
+section KeyLemma
+
+
+def M_set (τ : Finset T) (D : Finset Idx) (i : Idx) (h_nonempty : τ.Nonempty) : Set T :=
+  {y : T | ∀ k ∈ D, k ≠ i → mini h_nonempty k <[k] y}
+
+
+def is_maximal_in_M_set (τ : Finset T) (D : Finset Idx) (i : Idx) (h_nonempty : τ.Nonempty) (x : T) : Prop :=
+  x ∈ M_set τ D i h_nonempty ∧ ∀ y ∈ M_set τ D i h_nonempty, y ≤[i] x
+
+
+noncomputable def m_element [Fintype T] (τ : Finset T) (D : Finset Idx) (i : Idx) (h_nonempty : τ.Nonempty)
+    (h : (M_set τ D i h_nonempty).Nonempty) : T :=
+  @Finset.max' _ (IST i) (M_set τ D i h_nonempty).toFinset (Set.toFinset_nonempty.mpr h)
+
+
+omit[Inhabited T][DecidableEq T][DecidableEq Idx] in
+theorem m_element_is_maximal [Fintype T] (τ : Finset T) (D : Finset Idx) (i : Idx) (h_nonempty : τ.Nonempty)
+    (h : (M_set τ D i h_nonempty).Nonempty) :
+    is_maximal_in_M_set τ D i h_nonempty (m_element τ D i h_nonempty h) := by
+  unfold is_maximal_in_M_set m_element
+  let s_finset := (M_set τ D i h_nonempty).toFinset
+  have h_nonempty_finset: s_finset.Nonempty := Set.toFinset_nonempty.mpr h
   constructor
-  · have hb_nonneg : 0 ≤ (b.1 j : ℝ) := by positivity
-    have ha_le : (a.1 j : ℝ) ≤ (N : ℝ) := by exact_mod_cast haj_le
-    linarith
-  · have ha_nonneg : 0 ≤ (a.1 j : ℝ) := by positivity
-    have hb_le : (b.1 j : ℝ) ≤ (N : ℝ) := by exact_mod_cast hbj_le
-    linarith
+  · rw [←Set.mem_toFinset]
+    exact @Finset.max'_mem _ (IST i) s_finset h_nonempty_finset
+  · intros y hy
+    rw [←Set.mem_toFinset] at hy
+    apply @Finset.le_max' _ (IST i)
+    exact hy
 
-end simplexGrid
 
-omit [DecidableEq n] in
-lemma exists_coord_gt_of_not_fixed
-    (f : stdSimplex ℝ n → stdSimplex ℝ n)
-    (x : stdSimplex ℝ n)
-    (h : f x ≠ x) :
-    ∃ i, (f x).1 i < x.1 i := by
-  by_contra hle
-  apply h
-  apply Subtype.ext
-  funext i
-  have hxi_le : x.1 i ≤ (f x).1 i := by
-    exact le_of_not_gt fun hi => hle ⟨i, hi⟩
-  have hsum_diff : ∑ j, ((f x).1 j - x.1 j) = 0 := by
-    rw [Finset.sum_sub_distrib, (f x).2.2, x.2.2, sub_self]
-  have hdiff_nonneg : ∀ j, 0 ≤ (f x).1 j - x.1 j := by
-    intro j
-    exact sub_nonneg.mpr (le_of_not_gt fun hj => hle ⟨j, hj⟩)
-  have hi_diff_zero : (f x).1 i - x.1 i = 0 := by
-    have hi_le_sum :
-        (f x).1 i - x.1 i ≤ ∑ j, ((f x).1 j - x.1 j) :=
-      Finset.single_le_sum (fun j _ => hdiff_nonneg j) (Finset.mem_univ i)
-    linarith
-  exact sub_eq_zero.mp hi_diff_zero
-
-noncomputable def spernerColor
-    (f : stdSimplex ℝ n → stdSimplex ℝ n)
-    (hnofix : ∀ x, f x ≠ x)
-    {N : ℕ} (hN : 0 < N)
-    (a : simplexGrid (n := n) N) : n :=
-  Classical.choose
-    (exists_coord_gt_of_not_fixed f (simplexGrid.toStdSimplex hN a)
-      (hnofix _))
-
-omit [DecidableEq n] in
-lemma spernerColor_spec
-    (f : stdSimplex ℝ n → stdSimplex ℝ n)
-    (hnofix : ∀ x, f x ≠ x)
-    {N : ℕ} (hN : 0 < N)
-    (a : simplexGrid (n := n) N) :
-    (f (simplexGrid.toStdSimplex hN a)).1 (spernerColor f hnofix hN a) <
-      (simplexGrid.toStdSimplex hN a).1 (spernerColor f hnofix hN a) :=
-  Classical.choose_spec
-    (exists_coord_gt_of_not_fixed f (simplexGrid.toStdSimplex hN a)
-      (hnofix _))
-
-omit [DecidableEq n] in
-lemma spernerColor_boundary
-    (f : stdSimplex ℝ n → stdSimplex ℝ n)
-    (hnofix : ∀ x, f x ≠ x)
-    {N : ℕ} (hN : 0 < N)
-    (a : simplexGrid (n := n) N) {i : n}
-    (hi : a.1 i = 0) :
-    spernerColor f hnofix hN a ≠ i := by
-  intro hcolor
-  have hlt := spernerColor_spec f hnofix hN a
-  rw [hcolor] at hlt
-  have hcoord_zero : (simplexGrid.toStdSimplex hN a).1 i = 0 := by
-    simp [simplexGrid.toStdSimplex, hi]
-  rw [hcoord_zero] at hlt
-  exact not_lt_of_ge ((f (simplexGrid.toStdSimplex hN a)).2.1 i) hlt
-
-lemma spernerColor_vertex
-    (f : stdSimplex ℝ n → stdSimplex ℝ n)
-    (hnofix : ∀ x, f x ≠ x)
-    {N : ℕ} (hN : 0 < N) (i : n) :
-    spernerColor f hnofix hN (simplexGrid.vertex (n := n) N i) = i := by
-  exact simplexGrid.color_vertex_of_boundary
-    (spernerColor f hnofix hN)
-    (fun a j hj => spernerColor_boundary f hnofix hN a hj) i
-
-lemma exists_fixed_of_exists_approx
-    {X : Type*} [MetricSpace X] [CompactSpace X]
-    {f : X → X} (hf : Continuous f)
-    (happrox : ∀ ε : ℝ, 0 < ε → ∃ x, dist (f x) x < ε) :
-    ∃ x, Function.IsFixedPt f x := by
-  let t : ℕ → Set X := fun k => {x | dist (f x) x ≤ ((k + 1 : ℕ) : ℝ)⁻¹}
-  have htcl : ∀ k, IsClosed (t k) := by
-    intro k
-    have hdist : Continuous fun x => dist (f x) x := by fun_prop
-    exact isClosed_le hdist continuous_const
-  have htn : ∀ k, (t k).Nonempty := by
-    intro k
-    have hε : 0 < (((k + 1 : ℕ) : ℝ)⁻¹) := by positivity
-    obtain ⟨x, hx⟩ := happrox _ hε
-    exact ⟨x, le_of_lt hx⟩
-  have htd : ∀ k, t (k + 1) ⊆ t k := by
-    intro k x hx
-    exact hx.trans <|
-      (inv_le_inv₀ (by positivity : 0 < (((k + 2 : ℕ) : ℝ)))
-        (by positivity : 0 < (((k + 1 : ℕ) : ℝ)))).2 (by norm_num)
-  have ht0 : IsCompact (t 0) := by
-    exact isCompact_univ.of_isClosed_subset (htcl 0) (by intro x hx; simp)
-  obtain ⟨x, hx⟩ :=
-    IsCompact.nonempty_iInter_of_sequence_nonempty_isCompact_isClosed t htd htn ht0 htcl
-  have hx_le : ∀ k, dist (f x) x ≤ (((k + 1 : ℕ) : ℝ)⁻¹) := by
-    intro k
-    exact Set.mem_iInter.mp hx k
-  have hdist_zero : dist (f x) x = 0 := by
-    by_contra hne
-    have hpos : 0 < dist (f x) x := by
-      exact lt_of_le_of_ne dist_nonneg (by simpa [eq_comm] using hne)
-    obtain ⟨m, hm_pos, hm_lt⟩ := Real.exists_nat_pos_inv_lt hpos
-    have hm_succ_le : (((m + 1 : ℕ) : ℝ)⁻¹) ≤ ((m : ℝ)⁻¹) := by
-      exact (inv_le_inv₀ (by positivity : 0 < (((m + 1 : ℕ) : ℝ)))
-        (by exact_mod_cast hm_pos)).2 (by norm_num)
-    have hle := hx_le m
-    linarith
-  exact ⟨x, dist_eq_zero.mp hdist_zero⟩
-
-omit [DecidableEq n] in
-lemma stdSimplex_dist_lt_of_forall_coord_lt_add [Nonempty n]
-    {x y : stdSimplex ℝ n} {η ε : ℝ}
-    (hη : 0 < η) (hε : (Fintype.card n : ℝ) * η < ε)
-    (hcoord : ∀ i, y.1 i < x.1 i + η) :
-    dist y x < ε := by
-  classical
-  have hcard_pos_nat : 0 < Fintype.card n := Fintype.card_pos_iff.mpr ‹Nonempty n›
-  have hcard_pos : 0 < (Fintype.card n : ℝ) := by exact_mod_cast hcard_pos_nat
-  have hε_pos : 0 < ε := lt_of_lt_of_le (mul_pos hcard_pos hη) hε.le
-  change dist (y : n → ℝ) (x : n → ℝ) < ε
-  rw [dist_pi_lt_iff hε_pos]
-  intro i
-  rw [Real.dist_eq]
-  rw [abs_lt]
+omit [Inhabited T] in
+lemma sublemma_3_1 [Fintype T] (τ : Finset T) (D : Finset Idx)
+    (h_door : IST.isDoor τ D) (h_nonempty : τ.Nonempty) :
+    ∀ i ∈ D, (IST.isDominant τ (D.erase i) ↔
+      (∃ a b, a ∈ D ∧ b ∈ D ∧ a ≠ b ∧
+       mini h_nonempty a = mini h_nonempty b ∧
+       (i = a ∨ i = b) ∧
+       M_set τ D i h_nonempty = ∅)) := by
+  intro i hi
   constructor
-  · have hsum_diff : ∑ j, (y.1 j - x.1 j) = 0 := by
-      rw [Finset.sum_sub_distrib, y.2.2, x.2.2, sub_self]
-    let s : Finset n := Finset.univ.erase i
-    have hsum_erase :
-        x.1 i - y.1 i = s.sum (fun j => y.1 j - x.1 j) := by
-      have hmem : i ∈ (Finset.univ : Finset n) := Finset.mem_univ i
-      rw [← Finset.sum_erase_add _ _ hmem] at hsum_diff
-      dsimp [s]
+  · intro h_dom
+    have h_card : D.card = τ.card + 1 := h_door.2
+    have h_image_card : D.card = (D.image (mini h_nonempty)).card + 1 := by
+      have h_dominant : IST.isDominant τ D := h_door.1
+      have h_image_sub : D.image (mini h_nonempty) ⊆ τ := by
+        intro x hx
+        simp at hx
+        obtain ⟨j, _, hj_eq⟩ := hx
+        rw [←hj_eq, mini]
+        exact @Finset.min'_mem _ (IST j) τ h_nonempty
+      have h_image_eq : D.image (mini h_nonempty) = τ := by
+        convert (keylemma_of_dominant h_dominant h_nonempty).symm
+      rw [h_card, h_image_eq]
+    obtain ⟨a, b, ha_mem, hb_mem, h_eq_mini, h_ne, _⟩ := injOn_sdiff D (mini h_nonempty) h_image_card
+    use a, b, ha_mem, hb_mem, h_ne, h_eq_mini
+    by_cases h_case : i = a ∨ i = b
+    · constructor
+      · exact h_case
+      · ext y
+        simp [M_set]
+        obtain ⟨k, hk_in_erase, hk_dom⟩ := h_dom y
+        have hk_in_D : k ∈ D := (Finset.mem_erase.mp hk_in_erase).2
+        have hk_ne_i : k ≠ i := (Finset.mem_erase.mp hk_in_erase).1
+        use k, hk_in_D, hk_ne_i
+    · push Not at h_case
+      obtain ⟨h_i_ne_a, h_i_ne_b⟩ := h_case
+
+      have h_a_in_erase : a ∈ D.erase i := Finset.mem_erase.mpr ⟨h_i_ne_a.symm, ha_mem⟩
+      have h_b_in_erase : b ∈ D.erase i := Finset.mem_erase.mpr ⟨h_i_ne_b.symm, hb_mem⟩
+
+      have h_not_inj : ¬Set.InjOn (mini h_nonempty) (D.erase i : Set Idx) := by
+        intro h_inj
+        exact h_ne (h_inj h_a_in_erase h_b_in_erase h_eq_mini)
+
+      have h_image_lt : ((D.erase i).image (mini h_nonempty)).card < (D.erase i).card := by
+        by_contra h_not_lt
+        push Not at h_not_lt
+        have h_eq : ((D.erase i).image (mini h_nonempty)).card = (D.erase i).card :=
+          le_antisymm Finset.card_image_le h_not_lt
+        have h_inj : Set.InjOn (mini h_nonempty) (D.erase i : Set Idx) :=
+          Finset.injOn_of_card_image_eq h_eq
+        exact h_not_inj h_inj
+      exfalso
+      have h_dom_image := keylemma_of_dominant h_dom h_nonempty
+      have h_tau_eq_image : τ.card = ((D.erase i).image (mini h_nonempty)).card := by
+        congr; ext; simp [h_dom_image]
+      have h_tau_eq_erase : τ.card = (D.erase i).card := by
+        rw [Finset.card_erase_of_mem hi, h_door.2]; simp
+      rw [h_tau_eq_erase] at h_tau_eq_image
+      rw [h_tau_eq_image] at h_image_lt
+      exact not_lt.mpr (le_refl _) h_image_lt
+  · rintro ⟨a, b, ha_mem, hb_mem, h_ne, h_eq_mini, h_i_case, h_Mi_empty⟩
+    intro y
+    unfold M_set at h_Mi_empty
+    simp only [Set.mem_setOf_eq, Set.eq_empty_iff_forall_notMem] at h_Mi_empty
+    specialize h_Mi_empty y
+    push Not at h_Mi_empty
+    obtain ⟨k, hk_mem, hk_ne_i, hk_not_lt⟩ := h_Mi_empty
+    use k
+    constructor
+    · exact Finset.mem_erase.mpr ⟨hk_ne_i, hk_mem⟩
+    · intro x hx
+      letI : LinearOrder T := IST k
+      have h_y_le_mini : y ≤[k] mini h_nonempty k := hk_not_lt
+      have h_mini_le_x : mini h_nonempty k ≤[k] x := Finset.min'_le τ x hx
+      exact @le_trans _ (IST k).toPreorder _ _ _ h_y_le_mini h_mini_le_x
+
+
+omit [Inhabited T] in
+lemma sublemma_3_2 [Fintype T] (τ : Finset T) (D : Finset Idx) (x : T)
+    (h_door : IST.isDoor τ D) (h_nonempty : τ.Nonempty) (h_not_mem : x ∉ τ)
+    (a b : Idx) (ha : a ∈ D) (hb : b ∈ D) (hab : a ≠ b)
+    (h_eq : mini h_nonempty a = mini h_nonempty b) :
+    IST.isDominant (insert x τ) D ↔
+    (∃ i ∈ ({a, b} : Finset Idx), (M_set τ D i h_nonempty).Nonempty ∧
+     is_maximal_in_M_set τ D i h_nonempty x) := by
+  constructor
+  · intro h_dominant
+    have h_insert_nonempty : (insert x τ).Nonempty := Finset.insert_nonempty x τ
+    have h_min_eq_image : D.image (mini h_insert_nonempty) = insert x τ := by
+      convert (keylemma_of_dominant h_dominant h_insert_nonempty).symm
+    have h_x_is_min : ∃ i ∈ D, mini h_insert_nonempty i = x := by
+      have h_x_in_image : x ∈ D.image (mini h_insert_nonempty) := by
+        rw [h_min_eq_image]
+        exact Finset.mem_insert_self x τ
+      exact Finset.mem_image.mp h_x_in_image
+    obtain ⟨i, hi_mem, hi_eq⟩ := h_x_is_min
+    have h_is_room : isRoom (insert x τ) D := by
+      unfold isRoom
+      constructor
+      · exact h_dominant
+      · rw [Finset.card_insert_of_notMem h_not_mem, h_door.2]
+    have h_inj_insert : Set.InjOn (mini h_insert_nonempty) (D : Set Idx) := by
+      apply Finset.injOn_of_card_image_eq
+      rw [h_min_eq_image, h_is_room.2]
+    have h_mini_lt_x : ∀ k ∈ D, k ≠ i → mini h_nonempty k <[k] x := by
+      intros k hk_mem hk_ne_i
+      have h_mini_cases : mini h_insert_nonempty k = mini h_nonempty k ∨ mini h_insert_nonempty k = x := by
+        letI := IST k
+        unfold mini
+        by_cases h : τ.min' h_nonempty ≤[k] x
+        · left
+          apply le_antisymm
+          · apply Finset.min'_le
+            exact Finset.mem_insert_of_mem (Finset.min'_mem _ h_nonempty)
+          · apply Finset.le_min'
+            intro y hy
+            cases Finset.mem_insert.mp hy with
+            | inl h_eq => rw [h_eq]; exact h
+            | inr h_mem => exact Finset.min'_le _ _ h_mem
+        · right
+          apply le_antisymm
+          · apply Finset.min'_le
+            exact Finset.mem_insert_self _ _
+          · apply Finset.le_min'
+            intro y hy
+            cases Finset.mem_insert.mp hy with
+            | inl h_eq => rw [h_eq]
+            | inr h_mem => exact le_of_not_ge (fun h_le => h (le_trans (Finset.min'_le _ _ h_mem) h_le))
+      have h_mini_neq_x : mini h_insert_nonempty k ≠ x := by
+        intro h_eq
+        have h_inj : Set.InjOn (mini h_insert_nonempty) (D : Set Idx) := h_inj_insert
+        have hi_mem_D : i ∈ D := hi_mem
+        have hk_mem_D : k ∈ D := hk_mem
+        have h_mini_i_eq_x : mini h_insert_nonempty i = x := hi_eq
+        exact hk_ne_i (h_inj hi_mem_D hk_mem_D (h_mini_i_eq_x.trans h_eq.symm)).symm
+      letI := IST k
+      have h_mini_eq_k : mini h_insert_nonempty k = mini h_nonempty k := by
+        cases h_mini_cases with
+        | inl h => exact h
+        | inr h => exact absurd h h_mini_neq_x
+      apply lt_of_le_of_ne
+      · have h_le : mini h_insert_nonempty k ≤[k] x := by
+          apply @Finset.min'_le _ (IST k)
+          exact Finset.mem_insert_self x τ
+        rw [h_mini_eq_k] at h_le
+        exact h_le
+      · exact fun h_eq_x => h_not_mem (h_eq_x ▸ Finset.min'_mem τ h_nonempty)
+    have h_x_le_mini_i : x ≤[i] mini h_nonempty i := by
+      letI := IST i
+      rw [← hi_eq]
+      unfold mini
+      apply Finset.min'_le
+      · exact Finset.mem_insert_of_mem (Finset.min'_mem _ h_nonempty)
+    have h_i_in_ab : i ∈ ({a, b} : Finset Idx) := by
+      by_cases hik : i = a ∨ i = b
+      · simp [hik]
+      · push Not at hik
+        obtain ⟨hia, hib⟩ := hik
+        have h_mini_eq_for_ne_i : ∀ k ∈ D, k ≠ i → mini h_insert_nonempty k = mini h_nonempty k := by
+          intros k hk_mem hk_ne_i
+          have h_cases : mini h_insert_nonempty k = mini h_nonempty k ∨ mini h_insert_nonempty k = x := by
+            letI := IST k
+            by_cases h : τ.min' h_nonempty ≤[k] x
+            · left
+              apply le_antisymm
+              · apply Finset.min'_le
+                exact Finset.mem_insert_of_mem (Finset.min'_mem _ h_nonempty)
+              · apply Finset.le_min'
+                intro y hy
+                cases Finset.mem_insert.mp hy with
+                | inl h_eq_x => rw [h_eq_x]; exact h
+                | inr h_mem => exact Finset.min'_le _ _ h_mem
+            · right
+              apply le_antisymm
+              · apply Finset.min'_le
+                exact Finset.mem_insert_self _ _
+              · apply Finset.le_min'
+                intro y hy
+                cases Finset.mem_insert.mp hy with
+                | inl h_eq_x => rw [h_eq_x]
+                | inr h_mem => exact le_of_not_ge (fun h_le => h (le_trans (Finset.min'_le _ _ h_mem) h_le))
+          have h_mini_neq_x : mini h_insert_nonempty k ≠ x := by
+            intro h_eq_k_x
+            exact hk_ne_i (h_inj_insert hk_mem hi_mem (h_eq_k_x.trans hi_eq.symm))
+          cases h_cases with
+          | inl h => exact h
+          | inr h => exact absurd h h_mini_neq_x
+        have h_mini_a_eq : mini h_insert_nonempty a = mini h_nonempty a := h_mini_eq_for_ne_i a ha (Ne.symm hia)
+        have h_mini_b_eq : mini h_insert_nonempty b = mini h_nonempty b := h_mini_eq_for_ne_i b hb (Ne.symm hib)
+        have h_contr : mini h_insert_nonempty a = mini h_insert_nonempty b := by
+          rw [h_mini_a_eq, h_mini_b_eq, h_eq]
+        exact (hab (h_inj_insert ha hb h_contr)).elim
+    use i, h_i_in_ab
+    constructor
+    · have h_nonempty_M : (M_set τ D i h_nonempty).Nonempty := by
+        use x
+        unfold M_set
+        apply Set.mem_setOf.mpr
+        intro k hk_mem hk_ne_i
+        exact h_mini_lt_x k hk_mem hk_ne_i
+      exact h_nonempty_M
+    · unfold is_maximal_in_M_set
+      constructor
+      · unfold M_set
+        apply Set.mem_setOf.mpr
+        intro k hk_mem hk_ne_i
+        exact h_mini_lt_x k hk_mem hk_ne_i
+      · intros y hy
+        letI := IST i
+        unfold M_set at hy
+        simp at hy
+        obtain ⟨k, hk_in_D, h_y_le_all⟩ := h_dominant y
+        by_cases hik : k = i
+        · subst hik
+          exact h_y_le_all x (Finset.mem_insert_self x τ)
+        · have h_lt_y : mini h_nonempty k <[k] y := hy k hk_in_D hik
+          have h_mini_mem : mini h_nonempty k ∈ τ := by
+            unfold mini
+            exact @Finset.min'_mem _ (IST k) _ h_nonempty
+          have h_mini_mem_insert : mini h_nonempty k ∈ insert x τ := Finset.mem_insert_of_mem h_mini_mem
+          have h_le_m : y ≤[k] mini h_nonempty k := h_y_le_all (mini h_nonempty k) h_mini_mem_insert
+          letI := IST k
+          exact absurd (lt_of_lt_of_le h_lt_y h_le_m) (lt_irrefl _)
+
+  · rintro ⟨i, hi_mem_ab, h_M_nonempty, h_x_is_max⟩
+    have h_x_in_M : x ∈ M_set τ D i h_nonempty := h_x_is_max.1
+    unfold isDominant
+    intro y
+    have h_dom_tau := h_door.1
+    obtain ⟨k, hk_in_D, hk_dom⟩ := h_dom_tau y
+    by_cases h_k_eq_i : k = i
+    · subst h_k_eq_i
+      have hk_in_D : k ∈ D := by
+        cases Finset.mem_insert.mp hi_mem_ab with
+        | inl hk_eq_a => rwa [hk_eq_a]
+        | inr hk_eq_b => have : k = b := Finset.mem_singleton.mp hk_eq_b; rw [this]; exact hb
+      letI := IST k
+      by_cases h_y_le_x : y ≤[k] x
+      · use k, hk_in_D
+        intro z hz
+        cases Finset.mem_insert.mp hz with
+        | inl h_z_eq_x => rw [h_z_eq_x]; exact h_y_le_x
+        | inr h_z_in_tau => exact hk_dom z h_z_in_tau
+      · have h_x_lt_y : x <[k] y := lt_of_not_ge h_y_le_x
+        have h_y_not_in_M : y ∉ M_set τ D k h_nonempty := by
+          intro h_y_in_M
+          have h_y_le_x : y ≤[k] x := h_x_is_max.2 y h_y_in_M
+          exact not_le.mpr h_x_lt_y h_y_le_x
+        simp [M_set] at h_y_not_in_M
+        push Not at h_y_not_in_M
+        obtain ⟨j, hj_in_D, hj_ne_k, hj_not_lt⟩ := h_y_not_in_M
+        use j, hj_in_D
+        intro z hz
+        cases Finset.mem_insert.mp hz with
+        | inl h_z_eq_x =>
+          rw [h_z_eq_x]
+          letI := IST j
+          have h_mini_lt_x : mini h_nonempty j <[j] x := h_x_in_M j hj_in_D hj_ne_k
+          have h_y_le_mini : y ≤[j] mini h_nonempty j := le_of_not_gt hj_not_lt
+          exact le_of_lt (lt_of_le_of_lt h_y_le_mini h_mini_lt_x)
+        | inr h_z_in_tau =>
+          letI := IST j
+          have h_y_le_mini : y ≤[j] mini h_nonempty j := le_of_not_gt hj_not_lt
+          have h_mini_le_z : mini h_nonempty j ≤[j] z := Finset.min'_le τ z h_z_in_tau
+          exact le_trans h_y_le_mini h_mini_le_z
+    · use k, hk_in_D
+      intro z hz
+      cases Finset.mem_insert.mp hz with
+      | inl h_z_eq_x =>
+        rw [h_z_eq_x]
+        letI := IST k
+        have h_y_le_mini : y ≤[k] mini h_nonempty k := hk_dom (mini h_nonempty k) (Finset.min'_mem τ h_nonempty)
+        have h_mini_lt_x : mini h_nonempty k <[k] x := h_x_in_M k hk_in_D h_k_eq_i
+        exact le_of_lt (lt_of_le_of_lt h_y_le_mini h_mini_lt_x)
+      | inr h_z_in_tau =>
+        exact hk_dom z h_z_in_tau
+
+
+
+omit [Inhabited T][DecidableEq T] in
+lemma M_sets_disjoint [Fintype T] (τ : Finset T) (D : Finset Idx) (a b : Idx)
+    (h_nonempty : τ.Nonempty) (h_door : IST.isDoor τ D)
+    (ha : a ∈ D) (hb : b ∈ D) (hab : a ≠ b)
+    (h_eq : mini h_nonempty a = mini h_nonempty b) :
+    M_set τ D a h_nonempty ∩ M_set τ D b h_nonempty = ∅ := by
+  ext y
+  simp only [Set.mem_inter_iff, Set.mem_empty_iff_false]
+  constructor
+  · intro ⟨h_in_a, h_in_b⟩
+    unfold M_set at h_in_a h_in_b
+    have h_b_ne_a : b ≠ a := hab.symm
+    have h_mini_b_lt_y : mini h_nonempty b <[b] y := h_in_a b hb h_b_ne_a
+    have h_mini_a_lt_y : mini h_nonempty a <[a] y := h_in_b a ha hab
+    rw [h_eq] at h_mini_a_lt_y
+    obtain ⟨k, hk_in_D, hk_dom⟩ := h_door.1 y
+    have h_mini_b_mem : mini h_nonempty b ∈ τ := by
+      unfold mini
+      exact @Finset.min'_mem _ (IST b) _ h_nonempty
+    have h_y_le_mini_b : y ≤[k] mini h_nonempty b := hk_dom (mini h_nonempty b) h_mini_b_mem
+    by_cases hk_eq_a : k = a
+    · subst hk_eq_a
+      letI := IST k
+      exact not_le.mpr h_mini_a_lt_y h_y_le_mini_b
+    · by_cases hk_eq_b : k = b
+      · subst hk_eq_b
+        letI := IST k
+        exact not_le.mpr h_mini_b_lt_y h_y_le_mini_b
+      · have h_mini_k_lt_y : mini h_nonempty k <[k] y := h_in_a k hk_in_D hk_eq_a
+        have h_mini_k_mem : mini h_nonempty k ∈ τ := by
+          unfold mini
+          exact @Finset.min'_mem _ (IST k) _ h_nonempty
+        have h_y_le_mini_k : y ≤[k] mini h_nonempty k := hk_dom (mini h_nonempty k) h_mini_k_mem
+        letI := IST k
+        exact not_le.mpr h_mini_k_lt_y h_y_le_mini_k
+  · intro h
+    exact False.elim h
+
+omit [Inhabited T][DecidableEq T] in
+lemma m_element_not_in_tau [Fintype T] (τ : Finset T) (D : Finset Idx) (i a b : Idx)
+    (h_door : IST.isDoor τ D) (h_nonempty : τ.Nonempty)
+    (ha_mem : a ∈ D) (hb_mem : b ∈ D) (hab : a ≠ b)
+    (h_eq_mini : mini h_nonempty a = mini h_nonempty b)
+    (h_M_nonempty : (M_set τ D i h_nonempty).Nonempty)
+    (h_i_is : i = a ∨ i = b) :
+    m_element τ D i h_nonempty h_M_nonempty ∉ τ := by
+  let m_i := m_element τ D i h_nonempty h_M_nonempty
+  have h_max : is_maximal_in_M_set τ D i h_nonempty m_i :=
+    m_element_is_maximal τ D i h_nonempty h_M_nonempty
+  intro h_m_in_tau
+  obtain ⟨k, hk_mem, hk_dom⟩ := h_door.1 m_i
+  by_cases hk_eq_i : k = i
+  · subst hk_eq_i
+    have h_m_le_mini : m_i ≤[k] mini h_nonempty k := hk_dom (mini h_nonempty k) (by
+      unfold mini
+      exact @Finset.min'_mem _ (IST k) _ h_nonempty)
+    have h_m_eq_mini : m_i = mini h_nonempty k := by
+      letI := IST k
+      have h_mini_le_m : mini h_nonempty k ≤[k] m_i := Finset.min'_le τ m_i h_m_in_tau
+      exact le_antisymm h_m_le_mini h_mini_le_m
+    have h_m_in_M : m_i ∈ M_set τ D k h_nonempty := h_max.1
+    unfold M_set at h_m_in_M
+    cases h_i_is with
+    | inl hi_eq_a =>
+      subst hi_eq_a
+      have h_mini_b_lt_m : mini h_nonempty b <[b] m_i := h_m_in_M b hb_mem hab.symm
+      rw [h_m_eq_mini, h_eq_mini] at h_mini_b_lt_m
+      letI := IST b
+      exact lt_irrefl (mini h_nonempty b) h_mini_b_lt_m
+    | inr hi_eq_b =>
+      subst hi_eq_b
+      have h_mini_a_lt_m : mini h_nonempty a <[a] m_i := h_m_in_M a ha_mem hab
+      rw [h_m_eq_mini, ← h_eq_mini] at h_mini_a_lt_m
+      letI := IST a
+      exact lt_irrefl (mini h_nonempty a) h_mini_a_lt_m
+  · have h_m_in_M : m_i ∈ M_set τ D i h_nonempty := h_max.1
+    unfold M_set at h_m_in_M
+    have h_mini_k_lt_m : mini h_nonempty k <[k] m_i := h_m_in_M k hk_mem hk_eq_i
+    have h_m_le_mini_k : m_i ≤[k] mini h_nonempty k := hk_dom (mini h_nonempty k) (by
+      unfold mini
+      exact @Finset.min'_mem _ (IST k) _ h_nonempty)
+    letI := IST k
+    exact not_le.mpr h_mini_k_lt_m h_m_le_mini_k
+
+omit [Inhabited T] in
+lemma odoor_index_in_pair [Fintype T] (τ : Finset T) (D : Finset Idx) (C : Finset Idx)
+    (a b j : Idx) (_h_door : IST.isDoor τ D) (h_nonempty : τ.Nonempty)
+    (ha_mem : a ∈ D) (hb_mem : b ∈ D) (hab : a ≠ b)
+    (h_eq_mini : mini h_nonempty a = mini h_nonempty b)
+    (h_dom : IST.isDominant τ C) (h_room_card : C.card = τ.card)
+    (_hj_not_mem : j ∉ C) (hc_eq : D = insert j C) :
+    j ∈ ({a, b} : Finset Idx) := by
+  by_contra h_not_in
+  simp only [Finset.mem_insert, Finset.mem_singleton] at h_not_in
+  push Not at h_not_in
+  obtain ⟨hj_ne_a, hj_ne_b⟩ := h_not_in
+  have ha_in_C : a ∈ C := by
+    have ha_in_D : a ∈ D := ha_mem
+    rw [hc_eq] at ha_in_D
+    cases Finset.mem_insert.mp ha_in_D with
+    | inl h_eq => exact absurd h_eq (Ne.symm hj_ne_a)
+    | inr h_mem => exact h_mem
+  have hb_in_C : b ∈ C := by
+    have hb_in_D : b ∈ D := hb_mem
+    rw [hc_eq] at hb_in_D
+    cases Finset.mem_insert.mp hb_in_D with
+    | inl h_eq => exact absurd h_eq (Ne.symm hj_ne_b)
+    | inr h_mem => exact h_mem
+  have h_inj_C : Set.InjOn (mini h_nonempty) (C : Set Idx) := by
+    apply Finset.injOn_of_card_image_eq
+    have h_tau_eq_C_image : τ = C.image (mini h_nonempty) := by
+      convert keylemma_of_dominant h_dom h_nonempty
+    rw [←h_tau_eq_C_image]
+    exact h_room_card.symm
+  exact hab (h_inj_C ha_in_C hb_in_C h_eq_mini)
+
+omit [Inhabited T] [DecidableEq T] [DecidableEq Idx] in
+lemma maximal_element_unique [Fintype T] (τ : Finset T) (D : Finset Idx) (i : Idx)
+    (h_nonempty : τ.Nonempty) (h_M_nonempty : (M_set τ D i h_nonempty).Nonempty)
+    (x : T) (h_x_max : is_maximal_in_M_set τ D i h_nonempty x) :
+    x = m_element τ D i h_nonempty h_M_nonempty := by
+  let m_i := m_element τ D i h_nonempty h_M_nonempty
+  have h_mi_max : is_maximal_in_M_set τ D i h_nonempty m_i :=
+    m_element_is_maximal τ D i h_nonempty h_M_nonempty
+  letI := IST i
+  have h_x_in_M : x ∈ M_set τ D i h_nonempty := h_x_max.1
+  have h_mi_in_M : m_i ∈ M_set τ D i h_nonempty := h_mi_max.1
+  have h_x_le_mi : x ≤[i] m_i := h_mi_max.2 x h_x_in_M
+  have h_mi_le_x : m_i ≤[i] x := h_x_max.2 m_i h_mi_in_M
+  exact le_antisymm h_x_le_mi h_mi_le_x
+
+omit [Inhabited T] in
+lemma idoor_determines_element [Fintype T] (τ : Finset T) (D : Finset Idx)
+    (a b : Idx) (h_door : IST.isDoor τ D) (h_nonempty : τ.Nonempty)
+    (ha_mem : a ∈ D) (hb_mem : b ∈ D) (hab : a ≠ b)
+    (h_eq_mini : mini h_nonempty a = mini h_nonempty b)
+    (h_Ma_nonempty : (M_set τ D a h_nonempty).Nonempty)
+    (h_Mb_nonempty : (M_set τ D b h_nonempty).Nonempty)
+    (x : T) (h_room : IST.isRoom (insert x τ) D)
+    (hx_not_mem : x ∉ τ) :
+    x = m_element τ D a h_nonempty h_Ma_nonempty ∨
+    x = m_element τ D b h_nonempty h_Mb_nonempty := by
+  have h_dom : IST.isDominant (insert x τ) D := h_room.1
+  have h_exists_max : ∃ i ∈ ({a, b} : Finset Idx), (M_set τ D i h_nonempty).Nonempty ∧
+      is_maximal_in_M_set τ D i h_nonempty x := by
+    apply (sublemma_3_2 τ D x h_door h_nonempty hx_not_mem a b ha_mem hb_mem hab h_eq_mini).mp
+    exact h_dom
+  obtain ⟨i, hi_mem, hi_nonempty, hi_max⟩ := h_exists_max
+  have h_x_eq_mi : x = m_element τ D i h_nonempty hi_nonempty :=
+    maximal_element_unique τ D i h_nonempty hi_nonempty x hi_max
+  cases Finset.mem_insert.mp hi_mem with
+  | inl hi_eq_a =>
+    left
+    subst hi_eq_a
+    exact h_x_eq_mi
+  | inr hi_eq_b =>
+    right
+    have heq : i = b := Finset.mem_singleton.mp hi_eq_b
+    subst heq
+    exact h_x_eq_mi
+
+
+omit [Inhabited T] in
+theorem internal_door_two_rooms [Fintype T] (τ : Finset T) (D : Finset Idx)
+    (h_int_door : IST.isInternalDoor τ D) :
+    ∃ (sigma₁ sigma₂ : Finset T) (C₁ C₂ : Finset Idx),
+      (sigma₁, C₁) ≠ (sigma₂, C₂) ∧
+      IST.isRoom sigma₁ C₁ ∧
+      IST.isRoom sigma₂ C₂ ∧
+      isDoorof τ D sigma₁ C₁ ∧
+      isDoorof τ D sigma₂ C₂ ∧
+      (∀ sigma C, IST.isRoom sigma C → isDoorof τ D sigma C →
+       (sigma = sigma₁ ∧ C = C₁) ∨ (sigma = sigma₂ ∧ C = C₂)) := by
+  obtain ⟨h_door, h_nonempty⟩ := h_int_door
+  have h_card : D.card = τ.card + 1 := h_door.2
+  have h_image_card : D.card = (D.image (mini h_nonempty)).card + 1 := by
+    have h_dominant : IST.isDominant τ D := h_door.1
+    have h_image_eq : D.image (mini h_nonempty) = τ := by
+      convert (keylemma_of_dominant h_dominant h_nonempty).symm
+    rw [h_card, h_image_eq]
+  obtain ⟨a, b, ha_mem, hb_mem, h_eq_mini, hab, _⟩ := injOn_sdiff D (mini h_nonempty) h_image_card
+  have h_disjoint : M_set τ D a h_nonempty ∩ M_set τ D b h_nonempty = ∅ :=
+    M_sets_disjoint τ D a b h_nonempty h_door ha_mem hb_mem hab h_eq_mini
+  by_cases h_Ma_nonempty : (M_set τ D a h_nonempty).Nonempty
+  · by_cases h_Mb_nonempty : (M_set τ D b h_nonempty).Nonempty
+    · let m_a := m_element τ D a h_nonempty h_Ma_nonempty
+      let m_b := m_element τ D b h_nonempty h_Mb_nonempty
+      have h_ma_max : is_maximal_in_M_set τ D a h_nonempty m_a :=
+        m_element_is_maximal τ D a h_nonempty h_Ma_nonempty
+      have h_mb_max : is_maximal_in_M_set τ D b h_nonempty m_b :=
+        m_element_is_maximal τ D b h_nonempty h_Mb_nonempty
+      have h_ma_ne_mb : m_a ≠ m_b := by
+        intro h_eq
+        have h_ma_in_Ma : m_a ∈ M_set τ D a h_nonempty := h_ma_max.1
+        have h_mb_in_Mb : m_b ∈ M_set τ D b h_nonempty := h_mb_max.1
+        rw [h_eq] at h_ma_in_Ma
+        have h_in_inter : m_b ∈ M_set τ D a h_nonempty ∩ M_set τ D b h_nonempty :=
+          ⟨h_ma_in_Ma, h_mb_in_Mb⟩
+        rw [h_disjoint] at h_in_inter
+        exact Set.notMem_empty m_b h_in_inter
+      have h_ma_not_mem : m_a ∉ τ :=
+        m_element_not_in_tau τ D a a b h_door h_nonempty ha_mem hb_mem hab h_eq_mini h_Ma_nonempty (Or.inl rfl)
+      have h_mb_not_mem : m_b ∉ τ :=
+        m_element_not_in_tau τ D b a b h_door h_nonempty ha_mem hb_mem hab h_eq_mini h_Mb_nonempty (Or.inr rfl)
+      use insert m_a τ, insert m_b τ, D, D
+      constructor
+      · intro h_pair_eq
+        have h_eq : insert m_a τ = insert m_b τ := congr_arg Prod.fst h_pair_eq
+        have : m_a = m_b := by
+          have h_ma_in : m_a ∈ insert m_a τ := Finset.mem_insert_self m_a τ
+          rw [h_eq] at h_ma_in
+          cases Finset.mem_insert.mp h_ma_in with
+          | inl h => exact h
+          | inr h => exact absurd h h_ma_not_mem
+        exact h_ma_ne_mb this
+      constructor
+      · constructor
+        · apply (sublemma_3_2 τ D m_a h_door h_nonempty h_ma_not_mem a b ha_mem hb_mem hab h_eq_mini).mpr
+          use a, by simp
+        · rw [Finset.card_insert_of_notMem h_ma_not_mem, h_card]
+      constructor
+      · constructor
+        · apply (sublemma_3_2 τ D m_b h_door h_nonempty h_mb_not_mem a b ha_mem hb_mem hab h_eq_mini).mpr
+          use b, by simp
+        · rw [Finset.card_insert_of_notMem h_mb_not_mem, h_card]
+      constructor
+      · apply isDoorof.idoor
+        · apply (sublemma_3_2 τ D m_a h_door h_nonempty h_ma_not_mem a b ha_mem hb_mem hab h_eq_mini).mpr
+          use a, by simp
+        · exact h_door
+        · exact h_ma_not_mem
+        · rfl
+        · rfl
+      constructor
+      · apply isDoorof.idoor
+        · apply (sublemma_3_2 τ D m_b h_door h_nonempty h_mb_not_mem a b ha_mem hb_mem hab h_eq_mini).mpr
+          use b, by simp
+        · exact h_door
+        · exact h_mb_not_mem
+        · rfl
+        · rfl
+      · intros sigma C h_room h_door_rel
+        cases h_door_rel with
+        | idoor h0 _ x hx_not_mem hx_eq hc_eq =>
+          subst hx_eq hc_eq
+          have h_insert_room : IST.isRoom (insert x τ) D := by
+            constructor
+            · exact h0
+            · rw [Finset.card_insert_of_notMem hx_not_mem, h_card]
+          cases idoor_determines_element τ D a b h_door h_nonempty ha_mem hb_mem hab h_eq_mini
+              h_Ma_nonempty h_Mb_nonempty x h_insert_room hx_not_mem with
+          | inl h_x_eq_ma => left; exact ⟨h_x_eq_ma ▸ rfl, rfl⟩
+          | inr h_x_eq_mb => right; exact ⟨h_x_eq_mb ▸ rfl, rfl⟩
+        | odoor h0 _ j hj_not_mem hj_eq hc_eq =>
+          subst hj_eq
+          have h_card_eq : C.card = τ.card := h_room.2
+          have h_card_D : D.card = τ.card + 1 := h_door.2
+          have h_card_insert : (insert j C).card = C.card + 1 := Finset.card_insert_of_notMem hj_not_mem
+          rw [hc_eq] at h_card_D
+          rw [h_card_insert] at h_card_D
+          rw [h_card_eq] at h_card_D
+          have hj_in_ab : j = a ∨ j = b := by
+            by_contra h_not_in
+            push Not at h_not_in
+            obtain ⟨hj_ne_a, hj_ne_b⟩ := h_not_in
+            have ha_in_C : a ∈ C := by
+              have ha_in_D : a ∈ D := ha_mem
+              rw [hc_eq] at ha_in_D
+              cases Finset.mem_insert.mp ha_in_D with
+              | inl h_eq => exact False.elim (hj_ne_a h_eq.symm)
+              | inr h_mem => exact h_mem
+            have hb_in_C : b ∈ C := by
+              have hb_in_D : b ∈ D := hb_mem
+              rw [hc_eq] at hb_in_D
+              cases Finset.mem_insert.mp hb_in_D with
+              | inl h_eq => exact False.elim (hj_ne_b h_eq.symm)
+              | inr h_mem => exact h_mem
+            have h_inj_C : Set.InjOn (mini h_nonempty) (C : Set Idx) := by
+              apply Finset.injOn_of_card_image_eq
+              have h_tau_eq_C_image : τ = C.image (mini h_nonempty) := by
+                convert keylemma_of_dominant h0 h_nonempty
+              rw [←h_tau_eq_C_image]
+              exact h_card_eq.symm
+            have h_a_ne_b : a ≠ b := hab
+            have h_mini_eq : mini h_nonempty a = mini h_nonempty b := h_eq_mini
+            exact h_a_ne_b (h_inj_C ha_in_C hb_in_C h_mini_eq)
+          cases hj_in_ab with
+          | inl hj_eq_a =>
+            have h_dom_C : IST.isDominant τ C := h0
+            rw [show C = D.erase j by rw [hc_eq]; exact (Finset.erase_insert hj_not_mem).symm] at h_dom_C
+            have hj_eq_a_mem : j ∈ D := by rw [hj_eq_a]; exact ha_mem
+            have h_contra := (sublemma_3_1 τ D h_door h_nonempty j hj_eq_a_mem).mp h_dom_C
+            obtain ⟨a', b', ha'_mem, hb'_mem, ha'b'_ne, h_eq_mini', h_j_in_pair, h_M_empty⟩ := h_contra
+            have h_Mj_nonempty : (M_set τ D j h_nonempty).Nonempty := by
+              rw [hj_eq_a]; exact h_Ma_nonempty
+            rw [h_M_empty] at h_Mj_nonempty
+            exact False.elim (Set.not_nonempty_empty h_Mj_nonempty)
+          | inr hj_eq_b =>
+            have h_dom_C : IST.isDominant τ C := h0
+            rw [show C = D.erase j by rw [hc_eq]; exact (Finset.erase_insert hj_not_mem).symm] at h_dom_C
+            have hj_eq_b_mem : j ∈ D := by rw [hj_eq_b]; exact hb_mem
+            have h_contra := (sublemma_3_1 τ D h_door h_nonempty j hj_eq_b_mem).mp h_dom_C
+            obtain ⟨a', b', ha'_mem, hb'_mem, ha'b'_ne, h_eq_mini', h_j_in_pair, h_M_empty⟩ := h_contra
+            have h_Mj_nonempty : (M_set τ D j h_nonempty).Nonempty := by
+              rw [hj_eq_b]; exact h_Mb_nonempty
+            rw [h_M_empty] at h_Mj_nonempty
+            exact False.elim (Set.not_nonempty_empty h_Mj_nonempty)
+    · let m_a := m_element τ D a h_nonempty h_Ma_nonempty
+      have h_ma_max : is_maximal_in_M_set τ D a h_nonempty m_a :=
+        m_element_is_maximal τ D a h_nonempty h_Ma_nonempty
+      have h_ma_not_mem : m_a ∉ τ :=
+        m_element_not_in_tau τ D a a b h_door h_nonempty ha_mem hb_mem hab h_eq_mini h_Ma_nonempty (Or.inl rfl)
+      have h_Mb_empty : M_set τ D b h_nonempty = ∅ := Set.not_nonempty_iff_eq_empty.mp h_Mb_nonempty
+      use insert m_a τ, τ, D, D.erase b
+      constructor
+      · intro h_pair_eq
+        have h_eq : insert m_a τ = τ := congr_arg Prod.fst h_pair_eq
+        have h_ma_in : m_a ∈ insert m_a τ := Finset.mem_insert_self m_a τ
+        rw [h_eq] at h_ma_in
+        exact h_ma_not_mem h_ma_in
+      constructor
+      · constructor
+        · apply (sublemma_3_2 τ D m_a h_door h_nonempty h_ma_not_mem a b ha_mem hb_mem hab h_eq_mini).mpr
+          use a, by simp
+        · rw [Finset.card_insert_of_notMem h_ma_not_mem, h_card]
+      constructor
+      · constructor
+        · apply (sublemma_3_1 τ D h_door h_nonempty b hb_mem).mpr
+          use a, b, ha_mem, hb_mem, hab, h_eq_mini, (Or.inr rfl), h_Mb_empty
+        · rw [Finset.card_erase_of_mem hb_mem, h_card]
+          simp
+      constructor
+      · apply isDoorof.idoor
+        · apply (sublemma_3_2 τ D m_a h_door h_nonempty h_ma_not_mem a b ha_mem hb_mem hab h_eq_mini).mpr
+          use a, by simp
+        · exact h_door
+        · exact h_ma_not_mem
+        · rfl
+        · rfl
+      constructor
+      · apply isDoorof.odoor
+        · apply (sublemma_3_1 τ D h_door h_nonempty b hb_mem).mpr
+          use a, b, ha_mem, hb_mem, hab, h_eq_mini, (Or.inr rfl), h_Mb_empty
+        · exact h_door
+        · exact Finset.notMem_erase b D
+        · rfl
+        · exact (Finset.insert_erase hb_mem).symm
+      · intros sigma C h_room h_door_rel
+        cases h_door_rel with
+        | idoor h0 _ x hx_not_mem hx_eq hc_eq =>
+          subst hx_eq hc_eq
+          have h_dom : IST.isDominant (insert x τ) D := h0
+          have h_exists_max : ∃ i ∈ ({a, b} : Finset Idx), (M_set τ D i h_nonempty).Nonempty ∧ is_maximal_in_M_set τ D i h_nonempty x := by
+            apply (sublemma_3_2 τ D x h_door h_nonempty hx_not_mem a b ha_mem hb_mem hab h_eq_mini).mp h_dom
+          obtain ⟨i, hi_mem, hi_nonempty, hi_max⟩ := h_exists_max
+          cases Finset.mem_insert.mp hi_mem with
+          | inl hi_eq_a =>
+            subst hi_eq_a
+            have h_x_eq_ma : x = m_a := maximal_element_unique τ D i h_nonempty hi_nonempty x hi_max
+            left; exact ⟨h_x_eq_ma ▸ rfl, rfl⟩
+          | inr hi_eq_b =>
+            have : i = b := Finset.mem_singleton.mp hi_eq_b; subst this
+            rw [h_Mb_empty] at hi_nonempty
+            exact False.elim (Set.not_nonempty_empty hi_nonempty)
+         | odoor h0 _ j hj_not_mem hj_eq hc_eq =>
+           subst hj_eq
+           have h_card_eq : C.card = τ.card := h_room.2
+           have h_card_D : D.card = τ.card + 1 := h_door.2
+           have h_card_insert : (insert j C).card = C.card + 1 := Finset.card_insert_of_notMem hj_not_mem
+           rw [hc_eq, h_card_insert, h_card_eq] at h_card_D
+           have hj_in_ab : j ∈ ({a, b} : Finset Idx) :=
+             odoor_index_in_pair τ D C a b j h_door h_nonempty ha_mem hb_mem hab h_eq_mini h0 h_card_eq hj_not_mem hc_eq
+           cases Finset.mem_insert.mp hj_in_ab with
+           | inl hj_eq_a =>
+             subst hj_eq_a
+             exfalso
+             have h_dom_C : IST.isDominant τ C := h_room.1
+             rw [show C = D.erase j by rw [hc_eq]; exact (Finset.erase_insert hj_not_mem).symm] at h_dom_C
+             have h_contra := (sublemma_3_1 τ D h_door h_nonempty j ha_mem).mp h_dom_C
+             obtain ⟨_, _, _, _, _, _, _, h_M_empty⟩ := h_contra
+             exact (Set.not_nonempty_iff_eq_empty.mpr h_M_empty) h_Ma_nonempty
+           | inr hj_eq_b =>
+             have hj_eq_b : j = b := Finset.mem_singleton.mp hj_eq_b
+             subst hj_eq_b
+             right
+             exact ⟨rfl, (hc_eq ▸ (Finset.erase_insert hj_not_mem).symm)⟩
+  · have h_Ma_empty : M_set τ D a h_nonempty = ∅ := Set.not_nonempty_iff_eq_empty.mp h_Ma_nonempty
+    by_cases h_Mb_nonempty : (M_set τ D b h_nonempty).Nonempty
+    · let m_b := m_element τ D b h_nonempty h_Mb_nonempty
+      have h_mb_max : is_maximal_in_M_set τ D b h_nonempty m_b :=
+        m_element_is_maximal τ D b h_nonempty h_Mb_nonempty
+      have h_mb_not_mem : m_b ∉ τ :=
+        m_element_not_in_tau τ D b a b h_door h_nonempty ha_mem hb_mem hab h_eq_mini h_Mb_nonempty (Or.inr rfl)
+      use insert m_b τ, τ, D, D.erase a
+      constructor
+      · intro h_pair_eq
+        have h_eq : insert m_b τ = τ := congr_arg Prod.fst h_pair_eq
+        have h_mb_in : m_b ∈ insert m_b τ := Finset.mem_insert_self m_b τ
+        rw [h_eq] at h_mb_in
+        exact h_mb_not_mem h_mb_in
+      constructor
+      · constructor
+        · apply (sublemma_3_2 τ D m_b h_door h_nonempty h_mb_not_mem a b ha_mem hb_mem hab h_eq_mini).mpr
+          use b, by simp
+        · rw [Finset.card_insert_of_notMem h_mb_not_mem, h_card]
+      constructor
+      · constructor
+        · apply (sublemma_3_1 τ D h_door h_nonempty a ha_mem).mpr
+          use a, b, ha_mem, hb_mem, hab, h_eq_mini, (Or.inl rfl), h_Ma_empty
+        · rw [Finset.card_erase_of_mem ha_mem, h_card]
+          simp
+      constructor
+      · apply isDoorof.idoor
+        · apply (sublemma_3_2 τ D m_b h_door h_nonempty h_mb_not_mem a b ha_mem hb_mem hab h_eq_mini).mpr
+          use b, by simp
+        · exact h_door
+        · exact h_mb_not_mem
+        · rfl
+        · rfl
+      constructor
+      · apply isDoorof.odoor
+        · apply (sublemma_3_1 τ D h_door h_nonempty a ha_mem).mpr
+          use a, b, ha_mem, hb_mem, hab, h_eq_mini, (Or.inl rfl), h_Ma_empty
+        · exact h_door
+        · exact Finset.notMem_erase a D
+        · rfl
+        · exact (Finset.insert_erase ha_mem).symm
+      · intros sigma C h_room h_door_rel
+        cases h_door_rel with
+        | idoor h0 _ x hx_not_mem hx_eq hc_eq =>
+          subst hx_eq hc_eq
+          have h_dom : IST.isDominant (insert x τ) D := h0
+          have h_exists_max : ∃ i ∈ ({a, b} : Finset Idx), (M_set τ D i h_nonempty).Nonempty ∧ is_maximal_in_M_set τ D i h_nonempty x := by
+            apply (sublemma_3_2 τ D x h_door h_nonempty hx_not_mem a b ha_mem hb_mem hab h_eq_mini).mp h_dom
+          obtain ⟨i, hi_mem, hi_nonempty, hi_max⟩ := h_exists_max
+          cases Finset.mem_insert.mp hi_mem with
+          | inl hi_eq_a =>
+            subst hi_eq_a
+            rw [h_Ma_empty] at hi_nonempty
+            exact False.elim (Set.not_nonempty_empty hi_nonempty)
+          | inr hi_eq_b =>
+            have : i = b := Finset.mem_singleton.mp hi_eq_b; subst this
+            have h_x_eq_mb : x = m_b := maximal_element_unique τ D i h_nonempty hi_nonempty x hi_max
+            left; exact ⟨h_x_eq_mb ▸ rfl, rfl⟩
+         | odoor h0 _ j hj_not_mem hj_eq hc_eq =>
+           subst hj_eq
+           have h_card_eq : C.card = τ.card := h_room.2
+           have h_card_D : D.card = τ.card + 1 := h_door.2
+           have h_card_insert : (insert j C).card = C.card + 1 := Finset.card_insert_of_notMem hj_not_mem
+           rw [hc_eq] at h_card_D
+           rw [h_card_insert] at h_card_D
+           rw [h_card_eq] at h_card_D
+           have hj_in_ab : j ∈ ({a, b} : Finset Idx) :=
+             odoor_index_in_pair τ D C a b j h_door h_nonempty ha_mem hb_mem hab h_eq_mini h0 h_card_eq hj_not_mem hc_eq
+
+           cases Finset.mem_insert.mp hj_in_ab with
+           | inl hj_eq_a =>
+             have hj_eq_a : j = a := hj_eq_a
+             subst hj_eq_a
+             right
+             exact ⟨rfl, (hc_eq ▸ (Finset.erase_insert hj_not_mem).symm)⟩
+           | inr hj_eq_b =>
+             exfalso
+             have h_dom_C : IST.isDominant τ C := h_room.1
+             rw [show C = D.erase j by rw[hc_eq]; exact (Finset.erase_insert hj_not_mem).symm] at h_dom_C
+             have hj_eq_b : j = b := Finset.mem_singleton.mp hj_eq_b
+             subst hj_eq_b
+             have h_contra := (sublemma_3_1 τ D h_door h_nonempty j hb_mem).mp h_dom_C
+             obtain ⟨_, _, _, _, _, _, _, h_M_empty⟩ := h_contra
+             exact (Set.not_nonempty_iff_eq_empty.mpr h_M_empty) h_Mb_nonempty
+    · have h_Mb_empty : M_set τ D b h_nonempty = ∅ := Set.not_nonempty_iff_eq_empty.mp h_Mb_nonempty
+      use τ, τ, D.erase b, D.erase a
+      constructor
+      · intro h_pair_eq
+        have h_erasure_eq : D.erase b = D.erase a := congr_arg Prod.snd h_pair_eq
+        have h_a_in_erase_b : a ∈ D.erase b := Finset.mem_erase.mpr ⟨hab, ha_mem⟩
+        rw [h_erasure_eq] at h_a_in_erase_b
+        exact (Finset.notMem_erase a D) h_a_in_erase_b
+      constructor
+      · constructor
+        · apply (sublemma_3_1 τ D h_door h_nonempty b hb_mem).mpr
+          use a, b, ha_mem, hb_mem, hab, h_eq_mini, (Or.inr rfl), h_Mb_empty
+        · rw [Finset.card_erase_of_mem hb_mem, h_door.2]
+          simp
+      constructor
+      · constructor
+        · apply (sublemma_3_1 τ D h_door h_nonempty a ha_mem).mpr
+          use a, b, ha_mem, hb_mem, hab, h_eq_mini, (Or.inl rfl), h_Ma_empty
+        · rw [Finset.card_erase_of_mem ha_mem, h_door.2]
+          simp
+      constructor
+      · apply isDoorof.odoor
+        · apply (sublemma_3_1 τ D h_door h_nonempty b hb_mem).mpr
+          use a, b, ha_mem, hb_mem, hab, h_eq_mini, (Or.inr rfl), h_Mb_empty
+        · exact h_door
+        · exact Finset.notMem_erase b D
+        · rfl
+        · exact (Finset.insert_erase hb_mem).symm
+      constructor
+      · apply isDoorof.odoor
+        · apply (sublemma_3_1 τ D h_door h_nonempty a ha_mem).mpr
+          use a, b, ha_mem, hb_mem, hab, h_eq_mini, (Or.inl rfl), h_Ma_empty
+        · exact h_door
+        · exact Finset.notMem_erase a D
+        · rfl
+        · exact (Finset.insert_erase ha_mem).symm
+      · intros sigma C h_room h_door_rel
+        cases h_door_rel with
+        | idoor h0 _ x hx_not_mem hx_eq hc_eq =>
+          subst hx_eq hc_eq
+          have h_dom : IST.isDominant (insert x τ) D := h0
+          have h_exists_max : ∃ i ∈ ({a, b} : Finset Idx), (M_set τ D i h_nonempty).Nonempty ∧ is_maximal_in_M_set τ D i h_nonempty x := by
+            apply (sublemma_3_2 τ D x h_door h_nonempty hx_not_mem a b ha_mem hb_mem hab h_eq_mini).mp h_dom
+          obtain ⟨i, hi_mem, hi_nonempty, _⟩ := h_exists_max
+          cases Finset.mem_insert.mp hi_mem with
+          | inl hi_eq_a =>
+            subst hi_eq_a; rw [h_Ma_empty] at hi_nonempty
+            exact absurd hi_nonempty Set.not_nonempty_empty
+          | inr hi_eq_b =>
+            have : i = b := Finset.mem_singleton.mp hi_eq_b; subst this
+            rw [h_Mb_empty] at hi_nonempty
+            exact absurd hi_nonempty Set.not_nonempty_empty
+        | odoor h0 _ j hj_not_mem hj_eq hc_eq =>
+          subst hj_eq
+          have h_dom_C : IST.isDominant τ C := h0
+          have h_card_eq : C.card = τ.card := h_room.2
+          have h_card_D : D.card = τ.card + 1 := h_door.2
+          have h_card_insert : (insert j C).card = C.card + 1 := Finset.card_insert_of_notMem hj_not_mem
+          rw [hc_eq] at h_card_D
+          rw [h_card_insert] at h_card_D
+          rw [h_card_eq] at h_card_D
+          have hj_in_ab : j ∈ ({a, b} : Finset Idx) :=
+            odoor_index_in_pair τ D C a b j h_door h_nonempty ha_mem hb_mem hab h_eq_mini h_dom_C h_card_eq hj_not_mem hc_eq
+          cases Finset.mem_insert.mp hj_in_ab with
+          | inl hj_eq_a =>
+            have hj_eq_a : j = a := hj_eq_a
+            subst hj_eq_a
+            have h_C_eq_erase : C = D.erase j := by
+              rw [hc_eq]
+              exact (Finset.erase_insert hj_not_mem).symm
+            right
+            exact ⟨rfl, h_C_eq_erase⟩
+          | inr hj_eq_b =>
+            have hj_eq_b : j = b := Finset.mem_singleton.mp hj_eq_b
+            subst hj_eq_b
+            have h_C_eq_erase : C = D.erase j := by
+              rw [hc_eq]
+              exact (Finset.erase_insert hj_not_mem).symm
+            left
+            exact ⟨rfl, h_C_eq_erase⟩
+
+end KeyLemma
+
+
+noncomputable section Scarf
+
+open Classical
+
+
+
+
+variable (c : T → Idx) (sigma : Finset T) (C : Finset Idx)
+
+def isColorful : Prop := IST.isCell sigma C ∧ sigma.image c   = C
+
+def isNearlyColorful : Prop := IST.isCell sigma C ∧ (C \ sigma.image c).card = 1
+
+def isTypedNC (i : Idx) (sigma : Finset T) (C : Finset Idx): Prop := IST.isCell sigma C ∧ (C \ (sigma.image c)) = {i}
+
+
+variable {c sigma C}
+
+
+omit [Inhabited T] [DecidableEq T] in
+lemma not_colorful_of_TypedNC (h1 : isTypedNC c i sigma C) : ¬ IST.isColorful c sigma C := by
+  intro h
+  unfold isTypedNC at h1
+  unfold isColorful at h
+  have h_diff := h1.2
+  have h_ne : sigma.image c ≠ C := by
+    intro h_eq
+    rw [←h_eq, Finset.sdiff_self] at h_diff
+    have h_singleton_nonempty : ({i} : Finset Idx).Nonempty := Finset.singleton_nonempty i
+    rw [←h_diff] at h_singleton_nonempty
+    exact Finset.not_nonempty_empty h_singleton_nonempty
+  exact h_ne h.2
+
+omit [Inhabited T] [DecidableEq T] in
+lemma NC_of_TNC (h1 : isTypedNC c i sigma C) : isNearlyColorful c sigma C := by
+  have hcell := h1.1
+  have heq := h1.2
+  constructor
+  · exact hcell
+  · rw [heq]
+    have h_eq : C \ image c sigma = {i} := by
+      rw [heq]
+    rw [←heq, h_eq]
+    exact Finset.card_singleton i
+lemma Finset.eq_of_mem_of_card_one {α : Type*} [DecidableEq α] {s : Finset α} {a : α} (h_mem : a ∈ s) (h_card : s.card = 1) : s = {a} :=
+  Finset.eq_singleton_iff_unique_mem.mpr ⟨h_mem, fun y hy =>
+    let ⟨b, hb⟩ := Finset.card_eq_one.mp h_card
+    have h_a_eq_b : a = b := Finset.eq_of_mem_singleton (hb ▸ h_mem)
+    have h_y_eq_b : y = b := Finset.eq_of_mem_singleton (hb ▸ hy)
+    h_y_eq_b.trans h_a_eq_b.symm⟩
+
+omit [Inhabited T] [DecidableEq T] in
+lemma room_of_colorful (h : IST.isColorful c sigma C) : IST.isRoom sigma C := by
+  unfold isRoom
+  unfold isColorful at h
+  constructor
+  · exact h.1
+  · have h1 : C.card = (sigma.image c).card := by rw [h.2]
+    have h2 : (sigma.image c).card ≤ sigma.card := Finset.card_image_le
+    have h3 : sigma.card ≤ C.card := card_le_of_domiant h.1
+    linarith
+
+
+
+def pick_colorful_point (h : IST.isColorful c sigma C): sigma := Classical.choice (sigma_nonempty_of_room (room_of_colorful h)).to_subtype
+
+
+
+
+omit [Inhabited T] [DecidableEq T] in
+lemma NC_of_outsidedoor (h : isOutsideDoor sigma C) : isNearlyColorful c sigma C  := by
+  cases h with
+  | intro hd he =>
+    unfold isNearlyColorful
+    unfold isCell
+    constructor
+    · exact hd.1
+    · rw [he]
+      have h_img : Finset.image c Finset.empty = Finset.empty := Finset.image_empty c
+      rw [h_img]
+      have h_disj : Disjoint C Finset.empty := Finset.disjoint_empty_right C
+      have h_sdiff : C \ Finset.empty = C := Finset.sdiff_eq_self_of_disjoint h_disj
+      rw [h_sdiff]
+      unfold isDoor at hd
+      have h1 := hd.2
+      rw [he] at h1
+      exact h1
+
+
+omit [Inhabited T] in
+lemma NC_or_C_of_door (h1 : isTypedNC c i τ D) (h2 : isDoorof τ D sigma C) : isTypedNC c i sigma C ∨ isColorful c sigma C := by
+  unfold isTypedNC at h1 ⊢
+  unfold isColorful
+  have h1_cell := h1.left
+  have h1_eq := h1.right
+
+  have h_sigma_cell : isCell sigma C := by
+    cases h2 with
+    | idoor h0 _ _ _ _ _ => exact h0
+    | odoor h0 _ _ _ _ _ => exact h0
+
+  have step1_subset : C \ (sigma.image c) ⊆ D \ (τ.image c) := by
+    intro y hy
+    simp only [Finset.mem_sdiff] at hy ⊢
+    obtain ⟨y_in_C, y_notin_img_sigma⟩ := hy
+    constructor
+    · cases h2
+      · rename_i h_D_eq; rw [h_D_eq]; exact y_in_C
+      · rename_i h_D_eq; rw [h_D_eq]; exact Finset.mem_insert_of_mem y_in_C
+    · cases h2 with
+      | idoor h0 hdoor x h_x_notin h_sigma_eq h_D_eq =>
+        rw [← h_sigma_eq, Finset.image_insert] at y_notin_img_sigma
+        simp only [Finset.mem_insert, not_or] at y_notin_img_sigma
+        exact y_notin_img_sigma.2
+      | odoor h0 hdoor j h_j_notin h_sigma_eq h_D_eq =>
+        rw [← h_sigma_eq] at y_notin_img_sigma
+        exact y_notin_img_sigma
+
+  have step2_D_card : (D \ (τ.image c)).card = 1 := by
+    have D_sdiff_eq_i : D \ (τ.image c) = {i} := by
+      rw [h1_eq]
+    rw [D_sdiff_eq_i, Finset.card_singleton]
+
+  have step3_C_card_le : (C \ sigma.image c).card ≤ 1 := by
+    rw [← step2_D_card]
+    exact Finset.card_le_card step1_subset
+
+  by_cases h : (C \ sigma.image c).card = 0
+  · right
+    constructor
+    · exact h_sigma_cell
+    · have h_C_subset_img : C ⊆ sigma.image c := by
+        rw [Finset.subset_iff]
+        intro x hx
+        by_contra hxn
+        have : x ∈ C \ sigma.image c := by simp [hx, hxn]
+        have : (C \ sigma.image c).Nonempty := ⟨x, this⟩
+        have : 0 < (C \ sigma.image c).card := Finset.card_pos.2 this
+        linarith [h]
+
+      have h_room: isRoom sigma C := isRoom_of_Door h2
+      have h_card_eq : C.card = sigma.card := h_room.2
+      have h_img_le_C_card : (sigma.image c).card ≤ C.card := by
+        calc (sigma.image c).card
+          ≤ sigma.card := Finset.card_image_le
+          _ = C.card := h_card_eq.symm
+      exact (Finset.eq_of_subset_of_card_le h_C_subset_img h_img_le_C_card).symm
+
+  · left
+    constructor
+    · exact h_sigma_cell
+    · have h_card_one : (C \ sigma.image c).card = 1 := by omega
+
+      have h_subset_singleton : C \ sigma.image c ⊆ {i} := by
+        have D_sdiff_eq_i : D \ (τ.image c) = {i} := by
+          rw [h1_eq]
+        rw [← D_sdiff_eq_i]
+        exact step1_subset
+
+      have C_sdiff_eq_i : C \ sigma.image c = {i} :=
+        Finset.eq_of_subset_of_card_le h_subset_singleton (by rw [h_card_one, Finset.card_singleton])
+
+      have h_i_notin_img : i ∉ sigma.image c := by
+        have h_i_in_sdiff : i ∈ C \ sigma.image c := by rw [C_sdiff_eq_i]; simp
+        exact (Finset.mem_sdiff.mp h_i_in_sdiff).2
+
+      exact C_sdiff_eq_i
+
+omit [Inhabited T] in
+lemma NCtype_of_door (h1 : isTypedNC c i τ D) (_ : isDoorof τ D sigma C) (_ : isTypedNC c i sigma C) : isTypedNC c i τ D := h1
+
+omit [Inhabited T] in
+lemma isTypedNC_of_isNearlyColorful_of_isDoorof_isTypedNC (h_nc : isNearlyColorful c τ D) (h_door : isDoorof τ D sigma C) (h_room_typed : isTypedNC c i sigma C) : isTypedNC c i τ D := by
+  constructor
+  · exact h_nc.1
+  · have h_subset : C \ image c sigma ⊆ D \ image c τ := by
+      intro y hy
+      simp only [Finset.mem_sdiff] at hy ⊢
+      obtain ⟨y_in_C, y_notin_img_sigma⟩ := hy
+      constructor
+      · cases h_door with
+        | idoor h0 _ _ _ _ h_D_eq => rw [h_D_eq]; exact y_in_C
+        | odoor h0 _ _ _ _ h_D_eq => rw [h_D_eq]; exact Finset.mem_insert_of_mem y_in_C
+      · cases h_door with
+        | idoor h0 _ x _ h_sigma_eq _ =>
+          rw [← h_sigma_eq, Finset.image_insert] at y_notin_img_sigma
+          simp only [Finset.mem_insert, not_or] at y_notin_img_sigma
+          exact y_notin_img_sigma.2
+        | odoor h0 _ _ _ h_sigma_eq _ =>
+          rw [← h_sigma_eq] at y_notin_img_sigma
+          exact y_notin_img_sigma
+    have h_i_in_diff : i ∈ D \ image c τ := h_subset (h_room_typed.2 ▸ Finset.mem_singleton_self i)
+    have h_card_one : (D \ image c τ).card = 1 := h_nc.2
+    exact Finset.eq_of_mem_of_card_one h_i_in_diff h_card_one
+
+
+omit [Inhabited T] [DecidableEq T] in
+lemma card_of_NCcell (h : isNearlyColorful c sigma D) : #sigma = #(image c sigma)  ∨  #sigma = #(image c sigma) + 1 := by
+  unfold isNearlyColorful at h
+  rcases h with ⟨h_cell, h_nc_card⟩
+  let img := image c sigma
+  have h_card_le_D : sigma.card ≤ D.card := card_le_of_domiant h_cell
+  have h_D_card_eq := (Finset.card_sdiff_add_card_inter D img).symm
+  rw [h_nc_card] at h_D_card_eq
+  have h_inter_le_img : (D ∩ img).card ≤ img.card := card_le_card (Finset.inter_subset_right)
+  have h_D_le : D.card ≤ 1 + img.card := by
+    linarith [h_D_card_eq, h_inter_le_img]
+  have h_img_le_sigma : img.card ≤ sigma.card := card_image_le
+  have h_sigma_le_plus_one : sigma.card ≤ img.card + 1 := by
+    linarith [h_card_le_D, h_D_le]
+  have h_or : sigma.card ≤ img.card ∨ sigma.card = img.card + 1 := by
+    apply Nat.le_or_eq_of_le_succ
+    exact h_sigma_le_plus_one
+  cases h_or with
+  | inl h_le =>
+    left
+    exact le_antisymm h_le h_img_le_sigma
+  | inr h_eq =>
+    right
+    exact h_eq
+
+omit [Inhabited T] [DecidableEq T] in
+lemma image_subset_of_NCdoor (h1 : isNearlyColorful c sigma C) (h2 : isDoor sigma C) : image c sigma ⊆ C := by
+  unfold isNearlyColorful at h1
+  unfold isDoor at h2
+  rcases h1 with ⟨h_cell, h_nc_card⟩
+  rcases h2 with ⟨_, h_door_card⟩
+  let img := image c sigma
+  have h_img_le_sigma : img.card ≤ sigma.card := card_image_le
+  have h_sigma_le_C : sigma.card ≤ C.card := card_le_of_domiant h_cell
+  have h_inter_card : (C ∩ img).card = sigma.card := by
+    have h_C_card_eq := (Finset.card_sdiff_add_card_inter C img).symm
+    rw [h_nc_card] at h_C_card_eq
+    have h_C_eq : C.card = 1 + (C ∩ img).card := by linarith [h_C_card_eq]
+    rw [h_door_card] at h_C_eq
+    linarith [h_C_eq]
+  have h_img_eq_inter : img.card = (C ∩ img).card := by
+    have h_le1 : (C ∩ img).card ≤ img.card := card_le_card (Finset.inter_subset_right)
+    have h_le2 : img.card ≤ (C ∩ img).card := by
+      calc img.card
+        ≤ sigma.card := h_img_le_sigma
+        _ = (C ∩ img).card := h_inter_card.symm
+    exact le_antisymm h_le2 h_le1
+  have h_inter_eq_img : C ∩ img = img :=
+    Finset.eq_of_subset_of_card_le (Finset.inter_subset_right) (by rw [h_img_eq_inter])
+  rwa [Finset.inter_eq_right] at h_inter_eq_img
+
+section ImageErase
+
+variable {T Idx : Type*} [DecidableEq T] [DecidableEq Idx]
+
+lemma image_erase_eq_erase_image_of_unique
+  (sigma : Finset T) (c : T → Idx) {z : T}
+  (_ : z ∈ sigma)
+  (uniq : ∀ ⦃w⦄, w ∈ sigma → c w = c z → w = z) :
+  (sigma.erase z).image c = (sigma.image c).erase (c z) := by
+  ext i
+  constructor
+  · intro hi
+    rcases Finset.mem_image.mp hi with ⟨w, hw_in_erase, rfl⟩
+    rcases Finset.mem_erase.mp hw_in_erase with ⟨hw_ne_z, hw_in_sigma⟩
+    have h_ne_color : c w ≠ c z := by
+      intro h_eq
+      have := uniq hw_in_sigma h_eq
+      exact hw_ne_z this
+    exact Finset.mem_erase.mpr ⟨h_ne_color, Finset.mem_image.mpr ⟨w, hw_in_sigma, rfl⟩⟩
+  · intro hi
+    rcases Finset.mem_erase.mp hi with ⟨h_i_ne, hi_img⟩
+    rcases Finset.mem_image.mp hi_img with ⟨w, hw_in_sigma, rfl⟩
+    have hw_ne_z : w ≠ z := by
+      intro h_eq
+      apply h_i_ne
+      simp [h_eq]
+    exact Finset.mem_image.mpr ⟨w, Finset.mem_erase.mpr ⟨hw_ne_z, hw_in_sigma⟩, rfl⟩
+
+end ImageErase
+variable (c sigma C) in
+abbrev NCdoors := {(τ,D) | isNearlyColorful c τ D ∧ isDoorof τ D sigma C }
+
+
+omit [DecidableEq T] [Inhabited T] IST in
+lemma three_collision_card_bound [DecidableEq T] (sigma : Finset T) (c : T → Idx)
+    (a b z : T) (ha_in_sigma : a ∈ sigma) (hb_in_sigma : b ∈ sigma) (hz_in_sigma : z ∈ sigma)
+    (hab_ne : a ≠ b) (haz_ne : a ≠ z) (hbz_ne : b ≠ z)
+    (hc_eq : c a = c b) (hcz_eq : c b = c z) :
+    sigma.card ≥ (sigma.image c).card + 2 := by
+  let sigma_rest := sigma \ {a, b, z}
+  have h_three_subset_sigma : {a, b, z} ⊆ sigma := by
+    intro w hw; simp at hw; rcases hw with (rfl | rfl | rfl);
+    · exact ha_in_sigma
+    · exact hb_in_sigma
+    · exact hz_in_sigma
+
+  have h_partition : sigma = {a, b, z} ∪ sigma_rest :=
+    (Finset.union_sdiff_of_subset h_three_subset_sigma).symm
+
+  have h_disjoint : Disjoint ({a, b, z} : Finset T) sigma_rest :=
+    Finset.disjoint_sdiff
+
+  have h_card_partition : sigma.card = ({a, b, z} : Finset T).card + sigma_rest.card := by
+    rw [h_partition, Finset.card_union_of_disjoint h_disjoint]
+
+  have h_triple_card : ({a, b, z} : Finset T).card = 3 := by
+    rw [Finset.card_eq_three]
+    exact ⟨a, b, z, hab_ne, haz_ne, hbz_ne, rfl⟩
+
+  have h_image_bound : (sigma.image c).card ≤ sigma_rest.card + 1 := by
+    have h_image_union : sigma.image c = insert (c a) (sigma_rest.image c) := by
+      ext i; simp only [Finset.mem_image, Finset.mem_insert]
+      constructor
+      · rintro ⟨t, ht_in_sigma, rfl⟩
+        by_cases h_t_abz : t ∈ ({a, b, z} : Finset T)
+        · simp at h_t_abz; rcases h_t_abz with (rfl | rfl | rfl)
+          · left; rfl
+          · left; exact hc_eq.symm
+          · left; exact (hc_eq.trans hcz_eq).symm
+        · right; use t; simp [sigma_rest, ht_in_sigma, h_t_abz]
+      · rintro (rfl | ⟨t, ht_in_rest, rfl⟩)
+        · use a
+        · use t; exact ⟨(Finset.mem_sdiff.mp ht_in_rest).1, rfl⟩
+    rw [h_image_union]
+    linarith [Finset.card_insert_le (c a) (sigma_rest.image c), Finset.card_image_le (f := c) (s := sigma_rest)]
+
+  calc sigma.card
+      = 3 + sigma_rest.card           := by rw [h_card_partition, h_triple_card]
+    _ = sigma_rest.card + 3           := by ring
+    _ = (sigma_rest.card + 1) + 2     := by ring
+    _ ≥ (sigma.image c).card + 2      := by linarith [h_image_bound]
+
+
+omit [DecidableEq T] [Inhabited T] IST in
+lemma image_erase_collision_preserves [DecidableEq T] (sigma : Finset T) (c : T → Idx)
+    (x y : T) (hx_in_sigma : x ∈ sigma) (hy_in_sigma : y ∈ sigma) (hxy_ne : x ≠ y) (hcxy_eq : c x = c y) :
+    (sigma.erase x).image c = sigma.image c ∧ (sigma.erase y).image c = sigma.image c := by
+  constructor
+  · ext z
+    simp only [Finset.mem_image]
+    constructor
+    · intro ⟨w, hw_in_erased, hw_eq⟩
+      have hw_in_sigma : w ∈ sigma := by
+        rw [Finset.mem_erase] at hw_in_erased
+        exact hw_in_erased.2
+      exact ⟨w, hw_in_sigma, hw_eq⟩
+    · intro ⟨w, hw_in_sigma, hw_eq⟩
+      by_cases h : w = x
+      · subst h
+        use y
+        constructor
+        · rw [Finset.mem_erase]
+          exact ⟨hxy_ne.symm, hy_in_sigma⟩
+        · rw [←hcxy_eq, hw_eq]
+      · use w
+        exact ⟨Finset.mem_erase.mpr ⟨h, hw_in_sigma⟩, hw_eq⟩
+  · ext z
+    simp only [Finset.mem_image]
+    constructor
+    · intro ⟨w, hw_in_erased, hw_eq⟩
+      have hw_in_sigma : w ∈ sigma := by
+        rw [Finset.mem_erase] at hw_in_erased
+        exact hw_in_erased.2
+      exact ⟨w, hw_in_sigma, hw_eq⟩
+    · intro ⟨w, hw_in_sigma, hw_eq⟩
+      by_cases h : w = y
+      · subst h
+        use x
+        constructor
+        · rw [Finset.mem_erase]
+          exact ⟨hxy_ne, hx_in_sigma⟩
+        · rw [hcxy_eq, hw_eq]
+      · use w
+        exact ⟨Finset.mem_erase.mpr ⟨h, hw_in_sigma⟩, hw_eq⟩
+
+
+omit [DecidableEq T] [Inhabited T] in
+lemma collision_door_valid [DecidableEq T] (sigma : Finset T) (C : Finset Idx) (_ : T → Idx)
+    (x : T) (h_cell : isCell sigma C) (hx_in_sigma : x ∈ sigma) (h_card_eq : C.card = sigma.card) :
+    isDoorof (sigma.erase x) C sigma C := by
+  apply isDoorof.idoor h_cell
+  · constructor
+    · exact Dominant_of_subset sigma (sigma.erase x) C (Finset.erase_subset x sigma) h_cell
+    · rw [h_card_eq]
+      rw [Finset.card_erase_of_mem hx_in_sigma]
+      exact (Nat.sub_add_cancel (Finset.card_pos.mpr ⟨x, hx_in_sigma⟩)).symm
+  · exact Finset.notMem_erase x sigma
+  · exact Finset.insert_erase hx_in_sigma
+  · rfl
+
+
+omit [DecidableEq T] [Inhabited T] in
+lemma doors_of_NCroom [DecidableEq T] (h_room : isRoom sigma C) (h_nc : isNearlyColorful c sigma C) :
+  ∃ door1 door2, door1 ≠ door2 ∧ NCdoors c sigma C = {door1, door2} := by
+  have h_cases := card_of_NCcell h_nc
+  have h_card_eq : C.card = sigma.card := h_room.2
+  have h_cell : isCell sigma C := h_room.1
+  let img := image c sigma
+
+  cases h_cases with
+  | inl h_eq =>
+    have h_inj_on_sigma : Set.InjOn c ↑sigma := (Finset.card_image_iff).mp h_eq.symm
+    have h_img_C_card_1 : (img \ C).card = 1 := by
+      have h_card_eq' : C.card = img.card := by linarith [h_card_eq, h_eq]
+      have h_C_sdiff := Finset.card_sdiff_add_card_inter C img
+      rw [h_nc.2, h_card_eq'] at h_C_sdiff
+      have h_img_sdiff := Finset.card_sdiff_add_card_inter img C
+      rw [Finset.inter_comm] at h_C_sdiff
+      linarith [h_C_sdiff, h_img_sdiff]
+    obtain ⟨c_y, h_img_C_eq⟩ := Finset.card_eq_one.mp h_img_C_card_1
+    have h_c_y_in_img : c_y ∈ img := by
+      have : c_y ∈ img \ C := by rw [h_img_C_eq]; simp
+      exact (Finset.mem_sdiff.mp this).1
+    have h_c_y_notin_C : c_y ∉ C := by
+      have : c_y ∈ img \ C := by rw [h_img_C_eq]; simp
+      exact (Finset.mem_sdiff.mp this).2
+    obtain ⟨y, h_y_in_sigma, h_c_y_eq⟩ := Finset.mem_image.mp h_c_y_in_img
+    subst h_c_y_eq
+    have h_y_unique : ∀ ⦃z⦄, z ∈ sigma → c z = c y → z = y :=
+      λ z hz hcz => h_inj_on_sigma hz h_y_in_sigma hcz
+    let door1 := (sigma.erase y, C)
+    let door2 := (sigma, insert (c y) C)
+    use door1, door2
+    constructor
+    · intro h_eq_doors; simp [Prod.ext_iff] at h_eq_doors;
+      have this := h_eq_doors.1
+      have : y ∉ sigma := Finset.erase_eq_self.mp this
+      exact this h_y_in_sigma
+    · ext ⟨τ, D⟩; constructor
+      · intro h
+        rcases h with ⟨h_nc_door, h_is_door⟩
+        cases h_is_door with
+        | idoor h0 h_door x hx_notin_τ h_insert_x h_D_eq_C =>
+          subst h_D_eq_C
+          have h_nc_card := h_nc_door.2
+          have h_x_in_sigma : x ∈ sigma := by rw [←h_insert_x]; exact Finset.mem_insert_self x τ
+          have h_τ_eq_erase : τ = sigma.erase x := by rw [←Finset.erase_insert hx_notin_τ, h_insert_x]
+          have h_x_unique : ∀ ⦃w⦄, w ∈ sigma → c w = c x → w = x := by
+            intro w hw hcw
+            exact h_inj_on_sigma hw h_x_in_sigma hcw
+          have h_img_erase : (τ.image c) = img.erase (c x) := by
+            rw [h_τ_eq_erase]
+            exact image_erase_eq_erase_image_of_unique sigma c h_x_in_sigma h_x_unique
+          rw [h_img_erase] at h_nc_card
+          by_cases h_x_eq_y : x = y
+          · subst h_x_eq_y
+            simp [h_τ_eq_erase, door1]
+          · have h_cx_in_D : c x ∈ D := by
+              by_contra h_cx_notin_C
+              have h_cx_in_img_diff_D : c x ∈ img \ D := Finset.mem_sdiff.mpr ⟨Finset.mem_image_of_mem c h_x_in_sigma, h_cx_notin_C⟩
+              rw [h_img_C_eq, Finset.mem_singleton] at h_cx_in_img_diff_D
+              have h_c_eq : c x = c y := by rw [h_cx_in_img_diff_D]
+              have x_in_sigma : x ∈ sigma := by
+                have : x ∈ insert x τ := Finset.mem_insert_self x τ
+                have : x ∈ sigma := by
+                  rw [←h_insert_x]
+                  exact Finset.mem_insert_self x τ
+                exact this
+              have := h_y_unique x_in_sigma h_c_eq
+              exact h_x_eq_y this
+            exfalso
+            have h_card_2 : (D \ (img.erase (c x))).card = 2 := by
+              have h_eq : D \ (img.erase (c x)) = insert (c x) (D \ img) := by
+                ext y
+                simp only [Finset.mem_sdiff, Finset.mem_erase, Finset.mem_insert]
+                constructor
+                · intro ⟨hy_D, hy_not_erase⟩
+                  simp at hy_not_erase
+                  by_cases h : y = c x
+                  · left; exact h
+                  · right
+                    exact ⟨hy_D, hy_not_erase h⟩
+                · intro h
+                  cases h with
+                  | inl h_eq => exact ⟨h_eq ▸ h_cx_in_D, by simp [h_eq]⟩
+                  | inr h_in =>
+                    exact ⟨h_in.1, by simp; intro h_neq; exact h_in.2⟩
+              rw [h_eq, Finset.card_insert_of_notMem]
+              · rw [h_nc.2]
+              · intro h_mem
+                have := (Finset.mem_sdiff.mp h_mem).2
+                have h_img_mem : c x ∈ img := Finset.mem_image_of_mem c h_x_in_sigma
+                exact this h_img_mem
+            rw [h_card_2] at h_nc_card; linarith
+           | odoor h0 h_door j hj_notin_C h_τ_eq_sigma h_D_eq_insert =>
+            subst h_τ_eq_sigma; subst h_D_eq_insert
+            have h_nc_card := h_nc_door.2
+            by_cases h_j_eq_cy : j = c y
+            · subst h_j_eq_cy; simp; right; rfl
+            · exfalso
+              have h_j_notin_img : j ∉ img := by
+                intro h_j_in_img
+                have h_j_in_img_diff_C : j ∈ img \ C := Finset.mem_sdiff.mpr ⟨h_j_in_img, hj_notin_C⟩
+                rw [h_img_C_eq, Finset.mem_singleton] at h_j_in_img_diff_C
+                exact h_j_eq_cy h_j_in_img_diff_C
+              have h_card_2 : ((insert j C) \ img).card = 2 := by
+                have h_eq : (insert j C) \ img = (C \ img) ∪ {j} := by
+                  ext x
+                  simp only [Finset.mem_sdiff, Finset.mem_insert, Finset.mem_union, Finset.mem_singleton]
+                  constructor
+                  · intro ⟨hx_in, hx_notin⟩
+                    cases hx_in with
+                    | inl hx_eq_j => right; exact hx_eq_j
+                    | inr hx_in_C => left; exact ⟨hx_in_C, hx_notin⟩
+                  · intro h
+                    cases h with
+                    | inl h => exact ⟨Or.inr h.1, h.2⟩
+                    | inr h => exact ⟨Or.inl h, by rw [h]; exact h_j_notin_img⟩
+                rw [h_eq, Finset.card_union_of_disjoint]
+                · rw [h_nc.2, Finset.card_singleton]
+                · exact Finset.disjoint_singleton_right.mpr (fun h => hj_notin_C (Finset.mem_sdiff.mp h).1)
+              rw [h_card_2] at h_nc_card; linarith
+      · intro h
+        simp at h
+        rcases h with (h_eq1 | h_eq2)
+        · have ⟨h_τ_eq, h_D_eq⟩ : τ = sigma.erase y ∧ D = C := Prod.mk.inj h_eq1
+          subst h_τ_eq h_D_eq
+          constructor
+          · unfold isNearlyColorful
+            constructor
+            · unfold isCell
+              exact Dominant_of_subset _ _ D (Finset.erase_subset y sigma) h_cell
+            · rw [image_erase_eq_erase_image_of_unique sigma c h_y_in_sigma h_y_unique]
+              have h_eq_diff : D \ (image c sigma).erase (c y) = D \ image c sigma := by
+                ext z
+                constructor
+                · intro h
+                  simp only [Finset.mem_sdiff, Finset.mem_erase] at h ⊢
+                  exact ⟨h.1, fun h_in => h.2 ⟨fun h_eq => h_c_y_notin_C (h_eq ▸ h.1), h_in⟩⟩
+                · intro h
+                  simp only [Finset.mem_sdiff, Finset.mem_erase] at h ⊢
+                  exact ⟨h.1, fun ⟨_, h_in⟩ => h.2 h_in⟩
+              rw [h_eq_diff, h_nc.2]
+          · apply isDoorof.idoor
+            · exact h_cell
+            · constructor
+              · unfold isCell
+                exact Dominant_of_subset _ _ D (Finset.erase_subset y sigma) h_cell
+              · rw [Finset.card_erase_of_mem h_y_in_sigma, h_card_eq]
+                exact (Nat.sub_add_cancel (Finset.card_pos.mpr ⟨y, h_y_in_sigma⟩)).symm
+            · exact Finset.notMem_erase y sigma
+            · exact Finset.insert_erase h_y_in_sigma
+            · rfl
+
+        · have ⟨h_τ_eq, h_D_eq⟩ : τ = sigma ∧ D = insert (c y) C := Prod.mk.inj h_eq2
+          subst h_τ_eq h_D_eq
+          constructor
+          · unfold isNearlyColorful
+            constructor
+            · unfold isCell
+              unfold isDominant
+              intro z
+              obtain ⟨i, hi_in_C, hi_dom⟩ := h_cell z
+              use i, Finset.mem_insert_of_mem hi_in_C
+            · have h_j_in_img : c y ∈ img := Finset.mem_image_of_mem c h_y_in_sigma
+              have h_sdiff_insert : (insert (c y) C) \ img = C \ img := by
+                rw [Finset.insert_sdiff_of_mem _ h_j_in_img]
+              rw [h_sdiff_insert, h_nc.2]
+          · apply isDoorof.odoor
+            · exact h_cell
+            · constructor
+              · apply Dominant_of_supset τ C (insert (c y) C)
+                · exact Finset.subset_insert (c y) C
+                · exact h_cell
+              · rw [Finset.card_insert_of_notMem h_c_y_notin_C, h_card_eq]
+            · exact h_c_y_notin_C
+            · rfl
+            · rfl
+  | inr h_inj =>
+    unfold isNearlyColorful at h_nc
+    obtain ⟨h_cell, h_missing_card⟩ := h_nc
+    have h_missing_exists : ∃! i₀, i₀ ∈ C ∧ i₀ ∉ sigma.image c := by
+      have h_nonempty : (C \ sigma.image c).Nonempty := by
+        rw [←Finset.card_pos]
+        rw [h_missing_card]
+        norm_num
+      have h_singleton : ∃ i₀, C \ sigma.image c = {i₀} := by
+        exact Finset.card_eq_one.mp h_missing_card
+      obtain ⟨i₀, h_eq⟩ := h_singleton
+      use i₀
+      constructor
+      · constructor
+        · have h_i₀_in_diff : i₀ ∈ C \ image c sigma := by rw [h_eq]; simp
+          exact (Finset.mem_sdiff.mp h_i₀_in_diff).1
+        · have h_i₀_in_diff : i₀ ∈ C \ image c sigma := by rw [h_eq]; simp
+          exact (Finset.mem_sdiff.mp h_i₀_in_diff).2
+      · intro j ⟨h_j_in_C, h_j_notin_img⟩
+        have h_j_in_diff : j ∈ C \ sigma.image c := by
+          exact Finset.mem_sdiff.mpr ⟨h_j_in_C, h_j_notin_img⟩
+        rw [h_eq] at h_j_in_diff
+        exact Finset.mem_singleton.mp h_j_in_diff
+
+    obtain ⟨i₀, ⟨h_i₀_in_C, h_i₀_notin_img⟩, h_i₀_unique⟩ := h_missing_exists
+
+    have h_collision_exists : ∃ x y, x ∈ sigma ∧ y ∈ sigma ∧ x ≠ y ∧ c x = c y := by
+      by_contra h_no_collision
+      push Not at h_no_collision
+      have h_inj_on_sigma : Set.InjOn c sigma := by
+        intro x h_x y h_y h_eq
+        by_contra h_ne
+        exact h_no_collision x y h_x h_y h_ne h_eq
+      have h_card_eq : sigma.card = (sigma.image c).card := by
+        exact (Finset.card_image_of_injOn h_inj_on_sigma).symm
+      rw [h_card_eq] at h_inj
       linarith
-    have hsum_le :
-        s.sum (fun j => y.1 j - x.1 j) ≤ s.sum (fun _j => η) := by
-      exact Finset.sum_le_sum fun j _hj => le_of_lt (by linarith [hcoord j])
-    have hcard_le :
-        (s.card : ℝ) * η ≤ (Fintype.card n : ℝ) * η := by
-      have hs_card_le : s.card ≤ Fintype.card n := by
-        dsimp [s]
-        exact Finset.card_erase_le
-      exact mul_le_mul_of_nonneg_right (by exact_mod_cast hs_card_le) hη.le
-    have hlower : x.1 i - y.1 i < ε := by
-      calc
-        x.1 i - y.1 i = s.sum (fun j => y.1 j - x.1 j) := hsum_erase
-        _ ≤ s.sum (fun _j => η) := hsum_le
-        _ = (s.card : ℝ) * η := by simp [nsmul_eq_mul]
-        _ ≤ (Fintype.card n : ℝ) * η := hcard_le
-        _ < ε := hε
-    have hneg := neg_lt_neg hlower
-    have hEq : -(x.1 i - y.1 i) = y.1 i - x.1 i := by ring
-    rwa [hEq] at hneg
-  · have hupper : y.1 i - x.1 i < η := by linarith [hcoord i]
-    have hη_le : η ≤ (Fintype.card n : ℝ) * η := by
-      have hcard_ge_one_nat : 1 ≤ Fintype.card n := Nat.succ_le_of_lt hcard_pos_nat
-      calc
-        η = (1 : ℝ) * η := by ring
-        _ ≤ (Fintype.card n : ℝ) * η :=
-          mul_le_mul_of_nonneg_right (by exact_mod_cast hcard_ge_one_nat) hη.le
-    exact hupper.trans (hη_le.trans_lt hε)
 
-omit [DecidableEq n] in
-lemma stdSimplex_coord_lt_add_of_dist_lt
-    {x y : stdSimplex ℝ n} {η : ℝ} (hxy : dist x y < η) (i : n) :
-    x.1 i < y.1 i + η := by
-  have hcoord :
-      dist ((x : n → ℝ) i) ((y : n → ℝ) i) < η := by
-    exact (dist_le_pi_dist (x : n → ℝ) (y : n → ℝ) i).trans_lt (by simpa using hxy)
-  rw [Real.dist_eq] at hcoord
-  have hxsub : x.1 i - y.1 i < η := (abs_lt.mp hcoord).2
-  linarith
+    obtain ⟨x, y, h_x_in_sigma, h_y_in_sigma, h_xy_ne, h_cxy_eq⟩ := h_collision_exists
 
-omit [DecidableEq n] in
-lemma exists_nat_pos_card_div_lt [Nonempty n] {ρ : ℝ} (hρ : 0 < ρ) :
-    ∃ N : ℕ, 0 < N ∧ (Fintype.card n : ℝ) / (N : ℝ) < ρ := by
+    have h_collision_structure : ∃ a b, a ∈ sigma ∧ b ∈ sigma ∧ c a = c b ∧ a ≠ b ∧ Set.InjOn c (sigma \ {a, b}) := by
+      obtain ⟨a, b, ha, hb, heq, hne, hinj⟩ := injOn_sdiff sigma c h_inj
+      exact ⟨a, b, ha, hb, heq, hne, by convert hinj; simp⟩
+
+    obtain ⟨a, b, ha_in_sigma, hb_in_sigma, hc_eq, hab_ne, h_inj_outside⟩ := h_collision_structure
+
+    have h_collision_pair : (a = x ∧ b = y) ∨ (a = y ∧ b = x) := by
+      have h_pair_eq : ({x, y} : Finset T) = {a, b} := by
+        by_contra h_ne_pair
+        by_cases h_disjoint : Disjoint ({x, y} : Finset T) {a, b}
+
+        · have h_x_notin_ab : x ∉ {a, b} := Finset.disjoint_left.mp h_disjoint (by simp)
+          have h_y_notin_ab : y ∉ {a, b} := Finset.disjoint_left.mp h_disjoint (by simp)
+          have h_x_in_sdiff : x ∈ sigma \ {a, b} := Finset.mem_sdiff.mpr ⟨h_x_in_sigma, h_x_notin_ab⟩
+          have h_y_in_sdiff : y ∈ sigma \ {a, b} := Finset.mem_sdiff.mpr ⟨h_y_in_sigma, h_y_notin_ab⟩
+          have h_x_in_set : x ∈ (↑sigma : Set T) \ {a, b} := by
+            simp [Set.mem_diff, h_x_in_sigma]
+            simp at h_x_notin_ab
+            exact h_x_notin_ab
+          have h_y_in_set : y ∈ (↑sigma : Set T) \ {a, b} := by
+            simp [Set.mem_diff, h_y_in_sigma]
+            simp at h_y_notin_ab
+            exact h_y_notin_ab
+          have h_inj_xy := h_inj_outside h_x_in_set h_y_in_set h_cxy_eq
+          exact h_xy_ne h_inj_xy
+
+        · rw [Finset.not_disjoint_iff] at h_disjoint
+          obtain ⟨u, hu_in_xy, hu_in_ab⟩ := h_disjoint
+          simp only [Finset.mem_insert, Finset.mem_singleton] at hu_in_xy hu_in_ab
+          cases hu_in_xy with
+          | inl h_u_eq_x =>
+            rw [h_u_eq_x] at hu_in_ab
+            cases hu_in_ab with
+            | inl h_x_eq_a =>
+              by_cases h_y_eq_b : y = b
+              · rw [h_x_eq_a, h_y_eq_b] at h_ne_pair
+                exact h_ne_pair rfl
+              · have h_y_ne_a : y ≠ a := by
+                  rw [h_x_eq_a] at h_xy_ne
+                  exact h_xy_ne.symm
+                have h_c_chain : c a = c y := by
+                  rw [←h_x_eq_a, h_cxy_eq]
+                have h_y_in_complement : y ∈ sigma \ {a, b} := by
+                  rw [Finset.mem_sdiff]
+                  exact ⟨h_y_in_sigma, by simp [h_y_ne_a, h_y_eq_b]⟩
+
+                have h_y_in_set : y ∈ (↑sigma : Set T) \ {a, b} := by
+                  simp [Set.mem_diff, h_y_in_sigma, h_y_ne_a, h_y_eq_b]
+
+                have h_pairs_different : ({a, y} : Finset T) ≠ {a, b} := by
+                  intro h_eq
+                  have h_y_in : y ∈ ({a, b} : Finset T) := by
+                    rw [←h_eq]
+                    simp
+                  simp at h_y_in
+                  cases h_y_in with
+                  | inl h_y_eq_a => exact h_y_ne_a h_y_eq_a
+                  | inr h_y_eq_b_case => exact h_y_eq_b h_y_eq_b_case
+
+                exfalso
+
+                have h_all_distinct : a ≠ b ∧ a ≠ y ∧ b ≠ y := by
+                  exact ⟨hab_ne, h_y_ne_a.symm, Ne.symm h_y_eq_b⟩
+
+                have h_same_color : c a = c b ∧ c b = c y := by
+                  exact ⟨hc_eq, by rw [←hc_eq, ←h_c_chain]⟩
+
+                have h_three_in_sigma : a ∈ sigma ∧ b ∈ sigma ∧ y ∈ sigma := by
+                  exact ⟨ha_in_sigma, hb_in_sigma, h_y_in_sigma⟩
+
+                have h_card_bound : sigma.card ≥ (sigma.image c).card + 2 :=
+                  three_collision_card_bound sigma c a b y ha_in_sigma hb_in_sigma h_y_in_sigma
+                    hab_ne h_all_distinct.2.1 h_all_distinct.2.2 hc_eq h_same_color.2
+
+                linarith [h_inj, h_card_bound]
+
+            | inr h_x_eq_b =>
+              by_cases h_y_eq_a : y = a
+              · rw [h_x_eq_b, h_y_eq_a] at h_ne_pair
+                have : ({b, a} : Finset T) = {a, b} := by simp [Finset.pair_comm]
+                rw [this] at h_ne_pair
+                exact h_ne_pair rfl
+              · have h_y_ne_b : y ≠ b := by
+                  rw [h_x_eq_b] at h_xy_ne
+                  exact h_xy_ne.symm
+
+                have h_c_chain : c b = c y := by
+                  rw [←h_x_eq_b, h_cxy_eq]
+
+                have h_y_in_complement : y ∈ sigma \ {a, b} := by
+                  rw [Finset.mem_sdiff]
+                  exact ⟨h_y_in_sigma, by simp [h_y_eq_a, h_y_ne_b]⟩
+
+                have h_y_in_set : y ∈ (↑sigma : Set T) \ {a, b} := by
+                  simp [Set.mem_diff, h_y_in_sigma, h_y_eq_a, h_y_ne_b]
+
+                have h_pairs_different : ({b, y} : Finset T) ≠ {a, b} := by
+                  intro h_eq
+                  have h_y_in : y ∈ ({a, b} : Finset T) := by
+                    rw [←h_eq]
+                    simp
+                  simp at h_y_in
+                  cases h_y_in with
+                  | inl h_y_eq_a_case => exact h_y_eq_a h_y_eq_a_case
+                  | inr h_y_eq_b_case => exact h_y_ne_b h_y_eq_b_case
+
+                exfalso
+
+                have h_all_distinct : a ≠ b ∧ b ≠ y ∧ a ≠ y := by
+                  exact ⟨hab_ne, h_y_ne_b.symm, Ne.symm h_y_eq_a⟩
+
+                have h_same_color : c a = c b ∧ c b = c y := by
+                  exact ⟨hc_eq, h_c_chain⟩
+
+                have h_three_in_sigma : a ∈ sigma ∧ b ∈ sigma ∧ y ∈ sigma := by
+                  exact ⟨ha_in_sigma, hb_in_sigma, h_y_in_sigma⟩
+
+                have h_card_bound : sigma.card ≥ (sigma.image c).card + 2 :=
+                  three_collision_card_bound sigma c a b y ha_in_sigma hb_in_sigma h_y_in_sigma
+                    hab_ne h_all_distinct.2.2 h_all_distinct.2.1 hc_eq h_same_color.2
+
+                linarith [h_inj, h_card_bound]
+
+          | inr h_u_eq_y =>
+            rw [h_u_eq_y] at hu_in_ab
+            cases hu_in_ab with
+            | inl h_y_eq_a =>
+              by_cases h_x_eq_b : x = b
+              · rw [h_y_eq_a, h_x_eq_b] at h_ne_pair
+                have : ({a, b} : Finset T) = {b, a} := by simp [Finset.pair_comm]
+                rw [←this] at h_ne_pair
+                exact h_ne_pair rfl
+              · have h_x_ne_a : x ≠ a := by
+                  rw [h_y_eq_a] at h_xy_ne
+                  exact h_xy_ne
+                have h_c_chain : c a = c x := by
+                  rw [←h_y_eq_a, h_cxy_eq.symm]
+                have h_x_in_complement : x ∈ sigma \ {a, b} := by
+                  rw [Finset.mem_sdiff]
+                  exact ⟨h_x_in_sigma, by simp [h_x_ne_a, h_x_eq_b]⟩
+
+                have h_x_in_set : x ∈ (↑sigma : Set T) \ {a, b} := by
+                  simp [Set.mem_diff, h_x_in_sigma, h_x_ne_a, h_x_eq_b]
+
+                have h_pairs_different : ({a, x} : Finset T) ≠ {a, b} := by
+                  intro h_eq
+                  have h_x_in : x ∈ ({a, b} : Finset T) := by
+                    rw [←h_eq]
+                    simp
+                  simp at h_x_in
+                  cases h_x_in with
+                  | inl h_x_eq_a_case => exact h_x_ne_a h_x_eq_a_case
+                  | inr h_x_eq_b_case => exact h_x_eq_b h_x_eq_b_case
+
+                exfalso
+
+                have h_all_distinct : a ≠ b ∧ a ≠ x ∧ b ≠ x := by
+                  exact ⟨hab_ne, h_x_ne_a.symm, Ne.symm h_x_eq_b⟩
+
+                have h_same_color : c a = c b ∧ c b = c x := by
+                  exact ⟨hc_eq, by rw [←hc_eq, ←h_c_chain]⟩
+
+                have h_three_in_sigma : a ∈ sigma ∧ b ∈ sigma ∧ x ∈ sigma := by
+                  exact ⟨ha_in_sigma, hb_in_sigma, h_x_in_sigma⟩
+
+                have h_card_bound : sigma.card ≥ (sigma.image c).card + 2 :=
+                  three_collision_card_bound sigma c a b x ha_in_sigma hb_in_sigma h_x_in_sigma
+                    hab_ne h_all_distinct.2.1 h_all_distinct.2.2 hc_eq h_same_color.2
+
+                linarith [h_inj, h_card_bound]
+
+            | inr h_y_eq_b =>
+              by_cases h_x_eq_a : x = a
+              · rw [h_y_eq_b, h_x_eq_a] at h_ne_pair
+                exact h_ne_pair rfl
+              · have h_x_ne_b : x ≠ b := by
+                  rw [h_y_eq_b] at h_xy_ne
+                  exact h_xy_ne
+
+                have h_c_chain : c b = c x := by
+                  rw [←h_y_eq_b, h_cxy_eq.symm]
+
+                have h_x_in_complement : x ∈ sigma \ {a, b} := by
+                  rw [Finset.mem_sdiff]
+                  exact ⟨h_x_in_sigma, by simp [h_x_eq_a, h_x_ne_b]⟩
+
+                have h_x_in_set : x ∈ (↑sigma : Set T) \ {a, b} := by
+                  simp [Set.mem_diff, h_x_in_sigma, h_x_eq_a, h_x_ne_b]
+
+                have h_pairs_different : ({b, x} : Finset T) ≠ {a, b} := by
+                  intro h_eq
+                  have h_x_in : x ∈ ({a, b} : Finset T) := by
+                    rw [←h_eq]
+                    simp
+                  simp at h_x_in
+                  cases h_x_in with
+                  | inl h_x_eq_a_case => exact h_x_eq_a h_x_eq_a_case
+                  | inr h_x_eq_b_case => exact h_x_ne_b h_x_eq_b_case
+
+                exfalso
+
+                have h_all_distinct : a ≠ b ∧ b ≠ x ∧ a ≠ x := by
+                  exact ⟨hab_ne, h_x_ne_b.symm, Ne.symm h_x_eq_a⟩
+
+                have h_same_color : c a = c b ∧ c b = c x := by
+                  exact ⟨hc_eq, h_c_chain⟩
+
+                have h_three_in_sigma : a ∈ sigma ∧ b ∈ sigma ∧ x ∈ sigma := by
+                  exact ⟨ha_in_sigma, hb_in_sigma, h_x_in_sigma⟩
+
+                have h_card_bound : sigma.card ≥ (sigma.image c).card + 2 :=
+                  three_collision_card_bound sigma c a b x ha_in_sigma hb_in_sigma h_x_in_sigma
+                    hab_ne h_all_distinct.2.2 h_all_distinct.2.1 hc_eq h_same_color.2
+
+                linarith [h_inj, h_card_bound]
+
+      have h_eq_or_swap : ({x, y} : Finset T) = {a, b} ∨ ({x, y} : Finset T) = {b, a} := by
+        left; exact h_pair_eq
+      cases h_eq_or_swap with
+      | inl h_eq =>
+        have : {a, b} = {x, y} := h_eq.symm
+        by_cases h : a = x
+        · left
+          constructor
+          · exact h
+          · have h_b_in : b ∈ ({x, y} : Finset T) := by rw [← this]; simp
+            simp at h_b_in
+            cases h_b_in with
+            | inl h_b_eq_x => rw [h, h_b_eq_x] at hab_ne; contradiction
+            | inr h_b_eq_y => exact h_b_eq_y
+        · right
+          have h_a_in : a ∈ ({x, y} : Finset T) := by rw [← this]; simp
+          simp at h_a_in
+          cases h_a_in with
+          | inl h_a_eq_x => contradiction
+          | inr h_a_eq_y =>
+            constructor
+            · exact h_a_eq_y
+            · have h_b_in : b ∈ ({x, y} : Finset T) := by rw [← this]; simp
+              simp at h_b_in
+              cases h_b_in with
+              | inl h_b_eq_x => exact h_b_eq_x
+              | inr h_b_eq_y => rw [h_a_eq_y, h_b_eq_y] at hab_ne; contradiction
+      | inr h_eq =>
+        have : {b, a} = {x, y} := h_eq.symm
+        by_cases h : b = x
+        · have h_a_in : a ∈ ({x, y} : Finset T) := by rw [← this]; simp
+          simp at h_a_in
+          cases h_a_in with
+          | inl h_a_eq_x =>
+            exfalso
+            rw [h_a_eq_x] at hab_ne
+            rw [h] at hab_ne
+            exact hab_ne rfl
+          | inr h_a_eq_y => exact Or.inr ⟨h_a_eq_y, h⟩
+        · have h_b_in : b ∈ ({x, y} : Finset T) := by rw [← this]; simp
+          simp at h_b_in
+          cases h_b_in with
+          | inl h_b_eq_x => contradiction
+          | inr h_b_eq_y =>
+            have h_a_in : a ∈ ({x, y} : Finset T) := by rw [← this]; simp
+            simp at h_a_in
+            cases h_a_in with
+            | inl h_a_eq_x => exact Or.inl ⟨h_a_eq_x, h_b_eq_y⟩
+            | inr h_a_eq_y => rw [h_a_eq_y, h_b_eq_y] at hab_ne; contradiction
+
+    let τ₁ := sigma.erase x
+    let τ₂ := sigma.erase y
+    let door1 := (τ₁, C)
+    let door2 := (τ₂, C)
+
+    have h_door1_valid : isDoorof τ₁ C sigma C :=
+      collision_door_valid sigma C c x h_cell h_x_in_sigma h_card_eq
+
+    have h_door2_valid : isDoorof τ₂ C sigma C :=
+      collision_door_valid sigma C c y h_cell h_y_in_sigma h_card_eq
+
+    have h_imgs_preserved := image_erase_collision_preserves sigma c x y h_x_in_sigma h_y_in_sigma h_xy_ne h_cxy_eq
+
+    have h_door1_nc : isNearlyColorful c τ₁ C := by
+      unfold isNearlyColorful
+      constructor
+      · exact Dominant_of_subset sigma τ₁ C (Finset.erase_subset x sigma) h_cell
+      · rw [h_imgs_preserved.1, h_missing_card]
+
+    have h_door2_nc : isNearlyColorful c τ₂ C := by
+      unfold isNearlyColorful
+      constructor
+      · exact Dominant_of_subset sigma τ₂ C (Finset.erase_subset y sigma) h_cell
+      · rw [h_imgs_preserved.2, h_missing_card]
+
+    have h_doors_distinct : door1 ≠ door2 := by
+      simp [door1, door2, τ₁, τ₂]
+      intro h_eq
+      have h_y_mem : y ∈ sigma.erase x := by
+        rw [Finset.mem_erase]
+        exact ⟨h_xy_ne.symm, h_y_in_sigma⟩
+      rw [h_eq] at h_y_mem
+      have h_y_not_mem : y ∉ sigma.erase y := by
+        rw [Finset.mem_erase]
+        simp
+      exact h_y_not_mem h_y_mem
+
+    have h_exactly_two : NCdoors c sigma C = {door1, door2} := by
+      ext ⟨τ, D⟩
+      simp [NCdoors]
+      constructor
+      · intro ⟨h_nc_τD, h_door_τD⟩
+        cases h_door_τD with
+        | idoor h_cell_sigmaC h_door_τD z h_z_notin_τ h_insert_eq h_D_eq_C =>
+          rw [h_D_eq_C]
+          have h_τ_eq : τ = sigma.erase z := by
+            rw [←Finset.erase_insert h_z_notin_τ, h_insert_eq]
+          rw [h_τ_eq]
+          have h_z_in_sigma : z ∈ sigma := by
+            rw [←h_insert_eq]
+            exact Finset.mem_insert_self z τ
+          by_cases h_z_cases : z = x ∨ z = y
+          · rcases h_z_cases with h_z_eq_x | h_z_eq_y
+            · left; simp [door1, τ₁, h_z_eq_x]
+            · right; simp [door2, τ₂, h_z_eq_y]
+          · exfalso
+            push Not at h_z_cases
+            have h_card_is_one : (C \ (sigma.erase z).image c).card = 1 := by rw [←h_D_eq_C, ←h_τ_eq]; exact h_nc_τD.2
+            have h_card_is_two : (C \ (sigma.erase z).image c).card = 2 := by
+              have h_uniq_z : ∀ w ∈ sigma, c w = c z → w = z := by
+                intro w hw h_c_eq
+                rcases h_collision_pair with (⟨rfl, rfl⟩ | ⟨rfl, rfl⟩)
+                · have h_z_ne_ab : z ≠ a ∧ z ≠ b := h_z_cases
+                  by_cases hw_ab : w ∈ ({a, b} : Finset T)
+                  · exfalso
+                    have h_c_z_eq_ca : c z = c a := by
+                      simp at hw_ab; rcases hw_ab with rfl | rfl
+                      · exact h_c_eq.symm
+                      · transitivity c w; exact h_c_eq.symm; exact hc_eq.symm
+                    have h_card_ge_img_add_2 : sigma.card ≥ (sigma.image c).card + 2 :=
+                      three_collision_card_bound sigma c a b z ha_in_sigma hb_in_sigma h_z_in_sigma
+                        hab_ne (Ne.symm h_z_ne_ab.1) (Ne.symm h_z_ne_ab.2) hc_eq (h_c_z_eq_ca ▸ hc_eq.symm)
+                    linarith [h_inj, h_card_ge_img_add_2]
+                  · have h_w_sdiff : w ∈ sigma \ {a, b} := by simp [hw, hw_ab]
+                    have h_z_sdiff : z ∈ sigma \ {a, b} := by simp [h_z_in_sigma, h_z_ne_ab]
+                    exact h_inj_outside (by simpa using h_w_sdiff) (by simpa using h_z_sdiff) h_c_eq
+                · have h_z_ne_ab : z ≠ a ∧ z ≠ b := h_z_cases.symm
+                  by_cases hw_ab : w ∈ ({a, b} : Finset T)
+                  · exfalso
+                    have h_c_z_eq_ca : c z = c a := by
+                      simp at hw_ab; rcases hw_ab with rfl | rfl
+                      · exact h_c_eq.symm
+                      · transitivity c w; exact h_c_eq.symm; exact hc_eq.symm
+                    have h_card_ge_img_add_2 : sigma.card ≥ (sigma.image c).card + 2 :=
+                      three_collision_card_bound sigma c a b z ha_in_sigma hb_in_sigma h_z_in_sigma
+                        hab_ne (Ne.symm h_z_ne_ab.1) (Ne.symm h_z_ne_ab.2) hc_eq (h_c_z_eq_ca ▸ hc_eq.symm)
+                    linarith [h_inj, h_card_ge_img_add_2]
+                  · have h_w_sdiff : w ∈ sigma \ {a, b} := by simp [hw, hw_ab]
+                    have h_z_sdiff : z ∈ sigma \ {a, b} := by simp [h_z_in_sigma, h_z_ne_ab]
+                    exact h_inj_outside (by simpa using h_w_sdiff) (by simpa using h_z_sdiff) h_c_eq
+
+              have h_img_erase : (sigma.erase z).image c = (sigma.image c).erase (c z) :=
+                image_erase_eq_erase_image_of_unique sigma c h_z_in_sigma h_uniq_z
+
+              rw [h_img_erase]
+              have h_img_subset_C : image c sigma ⊆ C := by
+                have h_C_card_img : C.card = (image c sigma).card + 1 := by rw [h_card_eq, h_inj]
+                have h_C_card_form : C.card = (C \ image c sigma).card + (C ∩ image c sigma).card := (card_sdiff_add_card_inter C (image c sigma)).symm
+                rw [h_missing_card] at h_C_card_form
+                have h_img_eq_inter_card : (image c sigma).card = (C ∩ image c sigma).card := by linarith
+                have h_inter_eq_img : C ∩ image c sigma = image c sigma :=
+                  Finset.eq_of_subset_of_card_le Finset.inter_subset_right (by rw [h_img_eq_inter_card])
+                rwa [Finset.inter_eq_right] at h_inter_eq_img
+
+              have h_cz_in_C : c z ∈ C := h_img_subset_C (mem_image_of_mem c h_z_in_sigma)
+              have h_cz_not_in_diff : c z ∉ C \ image c sigma := by simp [mem_image_of_mem c h_z_in_sigma]
+
+              have h_eq : C \ (image c sigma).erase (c z) = (C \ image c sigma) ∪ {c z} := by
+                ext y
+                simp only [Finset.mem_sdiff, Finset.mem_erase, Finset.mem_union, Finset.mem_singleton]
+                constructor
+                · intro ⟨hy_in_C, hy_cond⟩
+                  by_cases h : y ∈ image c sigma
+                  · right; by_contra h'; exact hy_cond ⟨h', h⟩
+                  · left; exact ⟨hy_in_C, h⟩
+                · intro h
+                  cases h with
+                  | inl h => exact ⟨h.1, fun h' => h.2 h'.2⟩
+                  | inr h => rw [h]; exact ⟨h_cz_in_C, fun hp => hp.1 rfl⟩
+              rw [h_eq, Finset.card_union_of_disjoint]
+              · rw [h_missing_card, Finset.card_singleton]
+              · exact Finset.disjoint_singleton_right.mpr h_cz_not_in_diff
+
+            rw [h_card_is_two] at h_card_is_one
+            norm_num at h_card_is_one
+
+        | odoor h_cell_sigmaC h_door_τD j h_j_notin_C h_τ_eq_sigma h_D_eq =>
+          exfalso
+          have h_card_is_one : ((C ∪ {j}) \ (sigma.image c)).card = 1 := by
+           have : D \ (τ.image c) = (C ∪ {j}) \ (sigma.image c) := by rw [h_D_eq, ← h_τ_eq_sigma]; rw [Finset.insert_eq, Finset.union_comm]
+           rw [← this]
+           exact h_nc_τD.2
+          have h_img_subset_C : image c sigma ⊆ C := by
+            have h_C_card_img : C.card = (image c sigma).card + 1 := by rw [h_card_eq, h_inj]
+            have h_C_card_form : C.card = (C \ image c sigma).card + (C ∩ image c sigma).card := (card_sdiff_add_card_inter C (image c sigma)).symm
+            rw [h_missing_card] at h_C_card_form
+            have h_img_eq_inter_card : (image c sigma).card = (C ∩ image c sigma).card := by linarith
+            have h_inter_eq_img : C ∩ image c sigma = image c sigma :=
+              Finset.eq_of_subset_of_card_le Finset.inter_subset_right (by rw [h_img_eq_inter_card])
+            rwa [Finset.inter_eq_right] at h_inter_eq_img
+          have h_j_notin_img : j ∉ image c sigma := fun h => h_j_notin_C (h_img_subset_C h)
+          have h_card_is_two : ((C ∪ {j}) \ (sigma.image c)).card = 2 := by
+            rw [Finset.union_sdiff_distrib, Finset.card_union_of_disjoint]
+            · have h_sdiff_eq : {j} \ image c sigma = {j} :=
+                Finset.sdiff_eq_self_of_disjoint (Finset.disjoint_singleton_left.mpr h_j_notin_img)
+              rw [h_sdiff_eq, Finset.card_singleton]
+              linarith [h_missing_card]
+            · rw [Finset.sdiff_eq_self_of_disjoint (Finset.disjoint_singleton_left.mpr h_j_notin_img)]
+              rw [Finset.disjoint_singleton_right]
+              intro h
+              have : j ∈ C := (Finset.mem_sdiff.mp h).1
+              exact h_j_notin_C this
+          rw [h_card_is_two] at h_card_is_one
+          norm_num at h_card_is_one
+      · intro h_or
+        cases h_or with
+        | inl h_eq =>
+          have : τ = τ₁ ∧ D = C := Prod.mk.inj h_eq
+          rw [this.1, this.2]
+          exact ⟨h_door1_nc, h_door1_valid⟩
+        | inr h_eq =>
+          have : τ = τ₂ ∧ D = C := Prod.mk.inj h_eq
+          rw [this.1, this.2]
+          exact ⟨h_door2_nc, h_door2_valid⟩
+
+    use door1, door2
+
+
+variable [Fintype T] [Fintype Idx]
+
+variable (c) in
+abbrev colorful := Finset.filter (fun (x : Finset T× Finset Idx) =>  IST.isColorful c x.1 x.2) univ
+
+variable (c) in
+abbrev dbcountingset (i : Idx):= Finset.filter (fun x : (Finset T× Finset Idx) × (Finset T× Finset Idx) => isTypedNC c i x.1.1 x.1.2 ∧ isDoorof x.1.1 x.1.2 x.2.1 x.2.2) univ
+
+
+variable (c) in
+lemma dbcount_outside_door' (i : Idx): ∃ x,  filter (fun x => isOutsideDoor x.1.1 x.1.2) (dbcountingset c i) = {x}  :=  by
   classical
-  obtain ⟨N, hN_gt⟩ := exists_nat_gt ((Fintype.card n : ℝ) / ρ)
-  have hcard_nonneg : 0 ≤ (Fintype.card n : ℝ) := by positivity
-  have hN_pos_real : 0 < (N : ℝ) := by
-    have hquot_nonneg : 0 ≤ (Fintype.card n : ℝ) / ρ := div_nonneg hcard_nonneg hρ.le
-    exact lt_of_le_of_lt hquot_nonneg hN_gt
-  have hN_pos : 0 < N := Nat.cast_pos.mp hN_pos_real
-  refine ⟨N, hN_pos, ?_⟩
-  rw [div_lt_iff₀ hN_pos_real]
-  have hmul : (Fintype.card n : ℝ) < (N : ℝ) * ρ := by
-    exact (div_lt_iff₀ hρ).mp hN_gt
-  linarith
 
-omit [DecidableEq n] in
-lemma sperner_grid_exists_fully_labeled_coord_cell_coarse [Nonempty n]
-    (N : ℕ) (c : simplexGrid (n := n) N → n)
-    (hc : ∀ (a : simplexGrid (n := n) N) (i : n), a.1 i = 0 → c a ≠ i) :
-    ∃ base : simplexGrid (n := n) N,
-      ∀ i : n, ∃ a : simplexGrid (n := n) N,
-        c a = i ∧ ∀ j : n, |(a.1 j : ℝ) - (base.1 j : ℝ)| ≤ (N : ℝ) := by
-  classical
-  let i₀ : n := Classical.choice ‹Nonempty n›
-  let base : simplexGrid (n := n) N := simplexGrid.vertex (n := n) N i₀
-  refine ⟨base, fun i => ?_⟩
-  obtain ⟨a, ha⟩ := simplexGrid.exists_color_of_boundary c hc i
-  exact ⟨a, ha, fun j => simplexGrid.forall_abs_sub_le_mesh a base j⟩
+  have h_T_nonempty : Nonempty T := ⟨(default : T)⟩
+  have h_T_univ_nonempty : (Finset.univ : Finset T).Nonempty := Finset.univ_nonempty_iff.mpr h_T_nonempty
+  let x_max_i : T := @Finset.max' T (IST i) Finset.univ h_T_univ_nonempty
+  let sigma_u : Finset T := {x_max_i}
+  let C_u : Finset Idx := {i}
+  let τ_u : Finset T := Finset.empty
+  let D_u : Finset Idx := {i}
+  let x_unique : (Finset T × Finset Idx) × (Finset T × Finset Idx) := ((τ_u, D_u), (sigma_u, C_u))
 
-omit [DecidableEq n] in
-lemma sperner_grid_exists_fully_labeled_coord_cell_of_mesh_le_card [Nonempty n]
-    (N : ℕ) (hNcard : N ≤ Fintype.card n) (c : simplexGrid (n := n) N → n)
-    (hc : ∀ (a : simplexGrid (n := n) N) (i : n), a.1 i = 0 → c a ≠ i) :
-    ∃ base : simplexGrid (n := n) N,
-      ∀ i : n, ∃ a : simplexGrid (n := n) N,
-        c a = i ∧
-          ∀ j : n, |(a.1 j : ℝ) - (base.1 j : ℝ)| ≤ (Fintype.card n : ℝ) := by
-  classical
-  obtain ⟨base, hbase⟩ :=
-    sperner_grid_exists_fully_labeled_coord_cell_coarse (n := n) N c hc
-  refine ⟨base, fun i => ?_⟩
-  obtain ⟨a, hcolor, hcoord⟩ := hbase i
-  refine ⟨a, hcolor, fun j => ?_⟩
-  exact (hcoord j).trans (by exact_mod_cast hNcard)
+  have h_outside_door_τu_Du : isOutsideDoor τ_u D_u := outsidedoor_singleton i
+  have h_typed_nc : isTypedNC c i τ_u D_u := by
+    constructor
+    · exact (NC_of_outsidedoor (c := c) h_outside_door_τu_Du).1
+    · simp only [τ_u]
+      constructor
 
-/--
-The genuine finite Sperner parity/counting step, in its sharp grid-cell form.
+  have h_door_relation : isDoorof τ_u D_u sigma_u C_u := by
+    apply isDoorof.idoor
+    · intro y
+      use i
+      constructor
+      · simp only [C_u, Finset.mem_singleton]
+      · intro x hx
+        simp only [sigma_u] at hx
+        simp only [Finset.mem_singleton] at hx
+        rw [hx]
+        exact @Finset.le_max' T (IST i) Finset.univ y (Finset.mem_univ y)
+    · exact h_outside_door_τu_Du.1
+    · simp only [τ_u]
+      exact Finset.notMem_empty x_max_i
+    · simp only [τ_u, sigma_u]
+      rfl
+    · rfl
 
-This says that a Sperner coloring of the integer grid has a fully labeled unit cluster. A standard
-proof uses the Freudenthal triangulation and the odd-door parity argument.
--/
-theorem sperner_grid_exists_unit_neighborhood_image_eq_univ [Nonempty n]
-    (N : ℕ) (_hN : 0 < N) (hcardN : Fintype.card n < N)
-    (c : simplexGrid (n := n) N → n)
-    (hc : ∀ (a : simplexGrid (n := n) N) (i : n), a.1 i = 0 → c a ≠ i) :
-    ∃ base : simplexGrid (n := n) N,
-      ((simplexGrid.unitNeighborhood (n := n) N base).image c : Finset n) = Finset.univ := by
-  classical
-  by_contra h
-  exact simplexGrid.sperner_grid_not_forall_unit_neighborhood_image_ne_univ
-    (n := n) N _hN hcardN c hc (by
-      intro base hbase
-      exact h ⟨base, hbase⟩)
+  use x_unique
+  ext x_gen
+  simp only [mem_filter, mem_univ, mem_singleton]
 
-theorem sperner_grid_exists_fully_labeled_unit_cluster [Nonempty n]
-    (N : ℕ) (hN : 0 < N) (hcardN : Fintype.card n < N)
-    (c : simplexGrid (n := n) N → n)
-    (hc : ∀ (a : simplexGrid (n := n) N) (i : n), a.1 i = 0 → c a ≠ i) :
-    ∃ base : simplexGrid (n := n) N,
-      simplexGrid.FullyLabeledUnitCluster (n := n) c base := by
-  obtain ⟨base, hbase⟩ :=
-    sperner_grid_exists_unit_neighborhood_image_eq_univ (n := n) N hN hcardN c hc
-  exact ⟨base, (simplexGrid.fullyLabeledUnitCluster_iff_image_eq_univ c base).mpr hbase⟩
-
-/--
-The high-resolution case of the coordinate-cell theorem follows from the sharp unit-cluster
-Sperner statement.
--/
-theorem sperner_grid_exists_fully_labeled_coord_cell_of_card_lt_mesh [Nonempty n]
-    (N : ℕ) (hN : 0 < N) (hcardN : Fintype.card n < N)
-    (c : simplexGrid (n := n) N → n)
-    (hc : ∀ (a : simplexGrid (n := n) N) (i : n), a.1 i = 0 → c a ≠ i) :
-    ∃ base : simplexGrid (n := n) N,
-      ∀ i : n, ∃ a : simplexGrid (n := n) N,
-        c a = i ∧
-          ∀ j : n, |(a.1 j : ℝ) - (base.1 j : ℝ)| ≤ (Fintype.card n : ℝ) := by
-  classical
-  obtain ⟨base, hbase⟩ :=
-    sperner_grid_exists_fully_labeled_unit_cluster (n := n) N hN hcardN c hc
-  have hcard_one : (1 : ℝ) ≤ (Fintype.card n : ℝ) := by
-    have hcard_pos : 0 < Fintype.card n := Fintype.card_pos_iff.mpr ‹Nonempty n›
-    exact_mod_cast Nat.succ_le_of_lt hcard_pos
-  refine ⟨base, fun i => ?_⟩
-  obtain ⟨a, hcolor, hcoord⟩ := hbase i
-  exact ⟨a, hcolor, fun j => (hcoord j).trans hcard_one⟩
-
-/--
-Coordinate-only finite Sperner core for the integer grid of the standard simplex.
-
-Given a coloring satisfying the Sperner boundary condition, some grid cell has all labels and
-all its displayed vertices are within `card n` integer-coordinate steps of a base vertex. This is
-the only remaining combinatorial theorem needed by the Brouwer-style fixed point argument below.
--/
-theorem sperner_grid_exists_fully_labeled_coord_cell [Nonempty n]
-    (N : ℕ) (hN : 0 < N) (c : simplexGrid (n := n) N → n)
-    (hc : ∀ (a : simplexGrid (n := n) N) (i : n), a.1 i = 0 → c a ≠ i) :
-    ∃ base : simplexGrid (n := n) N,
-      ∀ i : n, ∃ a : simplexGrid (n := n) N,
-        c a = i ∧
-          ∀ j : n, |(a.1 j : ℝ) - (base.1 j : ℝ)| ≤ (Fintype.card n : ℝ) := by
-  classical
-  by_cases hsub : Subsingleton n
-  · haveI := hsub
-    let i₀ : n := Classical.choice ‹Nonempty n›
-    let base : simplexGrid (n := n) N := simplexGrid.vertex (n := n) N i₀
-    refine ⟨base, fun i => ⟨base, Subsingleton.elim _ _, fun j => ?_⟩⟩
-    simp
-  by_cases hNcard : N ≤ Fintype.card n
-  · exact sperner_grid_exists_fully_labeled_coord_cell_of_mesh_le_card
-      (n := n) N hNcard c hc
-  · exact sperner_grid_exists_fully_labeled_coord_cell_of_card_lt_mesh
-      (n := n) N hN (Nat.lt_of_not_ge hNcard) c hc
-
-/--
-Finite Sperner core for the integer grid of the standard simplex, with the coordinate cell converted
-to the metric mesh estimate used by the analytic part of the proof.
--/
-theorem sperner_grid_exists_fully_labeled_cell [Nonempty n]
-    (N : ℕ) (hN : 0 < N) (c : simplexGrid (n := n) N → n)
-    (hc : ∀ (a : simplexGrid (n := n) N) (i : n), a.1 i = 0 → c a ≠ i) :
-    ∃ base : simplexGrid (n := n) N,
-      ∀ i : n, ∃ a : simplexGrid (n := n) N,
-        c a = i ∧
-          dist (simplexGrid.toStdSimplex hN a) (simplexGrid.toStdSimplex hN base) ≤
-            (Fintype.card n : ℝ) / (N : ℝ) := by
-  classical
-  obtain ⟨base, hcell⟩ :=
-    sperner_grid_exists_fully_labeled_coord_cell (n := n) N hN c hc
-  refine ⟨base, fun i => ?_⟩
-  obtain ⟨a, hcolor, hcoord⟩ := hcell i
-  exact ⟨a, hcolor,
-    simplexGrid.dist_toStdSimplex_le_of_forall_abs_sub_le hN (by positivity) hcoord⟩
-
-/--
-Finite Sperner-grid core. For the no-fixed-point coloring induced by `f`, every requested mesh
-scale contains a fully labeled grid cell whose embedded vertices lie near one base vertex.
--/
-theorem sperner_grid_exists_fully_labeled_small_cell [Nonempty n]
-    (f : stdSimplex ℝ n → stdSimplex ℝ n)
-    (hnofix : ∀ x, f x ≠ x) (ρ : ℝ) (hρ : 0 < ρ) :
-    ∃ (N : ℕ) (hN : 0 < N) (base : simplexGrid (n := n) N),
-      ∀ i : n, ∃ a : simplexGrid (n := n) N,
-        spernerColor f hnofix hN a = i ∧
-          dist (simplexGrid.toStdSimplex hN a) (simplexGrid.toStdSimplex hN base) < ρ := by
-  classical
-  obtain ⟨N, hN, hmesh⟩ := exists_nat_pos_card_div_lt (n := n) hρ
-  obtain ⟨base, hcell⟩ :=
-    sperner_grid_exists_fully_labeled_cell (n := n) N hN
-      (spernerColor f hnofix hN)
-      (fun a i hi => spernerColor_boundary f hnofix hN a hi)
-  refine ⟨N, hN, base, fun i => ?_⟩
-  obtain ⟨a, hcolor, hdist⟩ := hcell i
-  exact ⟨a, hcolor, hdist.trans_lt hmesh⟩
-
-/--
-Sperner-grid one-sided approximation for the standard simplex.
-
-This is the remaining finite-combinatorial core: construct a sufficiently fine labeled grid using
-`spernerColor`, apply Sperner's lemma to obtain a fully labeled small cell, and turn that cell into
-the coordinate inequalities below.
--/
-theorem sperner_grid_exists_one_sided_approx_of_continuous [Nonempty n]
-    (f : stdSimplex ℝ n → stdSimplex ℝ n) (hf : Continuous f) :
-    ∀ η : ℝ, 0 < η → ∃ x, ∀ i, (f x).1 i < x.1 i + η := by
-  classical
-  intro η hη
-  by_cases hfixed : ∃ x, Function.IsFixedPt f x
-  · obtain ⟨x, hx⟩ := hfixed
-    refine ⟨x, fun i => ?_⟩
-    rw [hx]
-    linarith
-  · have hnofix : ∀ x, f x ≠ x := by
-      intro x hx
-      exact hfixed ⟨x, hx⟩
-    have hη2 : 0 < η / 2 := half_pos hη
-    have huc : UniformContinuous f := CompactSpace.uniformContinuous_of_continuous hf
-    obtain ⟨δ, hδ_pos, hδ⟩ := (Metric.uniformContinuous_iff.mp huc) (η / 2) hη2
-    let ρ := min δ (η / 2)
-    have hρ_pos : 0 < ρ := lt_min hδ_pos hη2
-    obtain ⟨N, hN, base, hcell⟩ :=
-      sperner_grid_exists_fully_labeled_small_cell f hnofix ρ hρ_pos
-    refine ⟨simplexGrid.toStdSimplex hN base, fun i => ?_⟩
-    obtain ⟨a, hcolor, hdist⟩ := hcell i
-    let xa := simplexGrid.toStdSimplex hN a
-    let xb := simplexGrid.toStdSimplex hN base
-    have hdist_delta : dist xa xb < δ := hdist.trans_le (min_le_left _ _)
-    have hdist_eta : dist xa xb < η / 2 := hdist.trans_le (min_le_right _ _)
-    have hf_dist : dist (f xa) (f xb) < η / 2 := hδ hdist_delta
-    have hf_coord : (f xb).1 i < (f xa).1 i + η / 2 :=
-      stdSimplex_coord_lt_add_of_dist_lt (by simpa [dist_comm] using hf_dist) i
-    have hcolor_lt : (f xa).1 i < xa.1 i := by
-      have hspec := spernerColor_spec f hnofix hN a
-      simpa [hcolor, xa] using hspec
-    have hbase_coord : xa.1 i < xb.1 i + η / 2 :=
-      stdSimplex_coord_lt_add_of_dist_lt hdist_eta i
-    change (f xb).1 i < xb.1 i + η
-    linarith
-
-theorem sperner_grid_exists_approx_fixed_point_of_continuous [Nonempty n]
-    (f : stdSimplex ℝ n → stdSimplex ℝ n) (hf : Continuous f) :
-    ∀ ε : ℝ, 0 < ε → ∃ x, dist (f x) x < ε := by
-  intro ε hε
-  classical
-  let η := ε / ((Fintype.card n : ℝ) + 1)
-  have hcard_nonneg : 0 ≤ (Fintype.card n : ℝ) := by positivity
-  have hden_pos : 0 < (Fintype.card n : ℝ) + 1 := by positivity
-  have hη : 0 < η := div_pos hε hden_pos
-  obtain ⟨x, hx⟩ := sperner_grid_exists_one_sided_approx_of_continuous f hf η hη
-  refine ⟨x, stdSimplex_dist_lt_of_forall_coord_lt_add hη ?_ hx⟩
-  dsimp [η]
-  have hlt : (Fintype.card n : ℝ) < (Fintype.card n : ℝ) + 1 := by linarith
-  field_simp [hden_pos.ne']
-  nlinarith
-
-theorem stdSimplex_exists_approx_fixed_point_of_continuous [Nonempty n]
-    (f : stdSimplex ℝ n → stdSimplex ℝ n) (hf : Continuous f) :
-    ∀ ε : ℝ, 0 < ε → ∃ x, dist (f x) x < ε :=
-  sperner_grid_exists_approx_fixed_point_of_continuous f hf
-
-/--
-The missing Mathlib ingredient for the general Perron-Frobenius route: Brouwer fixed point
-specialized to the standard simplex.
--/
-theorem stdSimplex_exists_isFixedPt_of_continuous [Nonempty n]
-    (f : stdSimplex ℝ n → stdSimplex ℝ n) (hf : Continuous f) :
-    ∃ x, Function.IsFixedPt f x := by
-  exact exists_fixed_of_exists_approx hf
-    (stdSimplex_exists_approx_fixed_point_of_continuous f hf)
-
-/--
-The exact benchmark statement has no `[Nonempty n]` assumption. Under Mathlib's definition,
-irreducibility is vacuous for the empty index type, while `HasEigenvector` still requires a
-nonzero vector. This is a blocker for proving the theorem exactly as stated.
--/
-lemma empty_matrix_isIrreducible : (0 : Matrix Empty Empty ℝ).IsIrreducible := by
   constructor
-  · intro i
-    cases i
-  · intro i
-    cases i
+  · intro h_in_filter
+    simp at h_in_filter
+    obtain ⟨h_in_db, h_outside⟩ := h_in_filter
+    obtain ⟨h_typed, h_door⟩ := h_in_db
+    obtain ⟨h_is_door, h_empty⟩ := h_outside
+    have h_empty_image : (x_gen.1.1).image c = ∅ := by
+      rw [h_empty]
+      exact Finset.image_empty c
+    have h_x_gen_1_2_eq : x_gen.1.2 = {i} := by
+      have h_eq := h_typed.2
+      rw [h_empty_image] at h_eq
+      simp at h_eq
+      exact h_eq
+    obtain ⟨_, h_D_singleton⟩ := outsidedoor_is_singleton ⟨h_is_door, h_empty⟩
+    obtain ⟨j, h_D_eq⟩ := h_D_singleton
 
-lemma no_empty_eigenvector :
-    ¬ ∃ v : Empty → ℝ,
-      Module.End.HasEigenvector (Matrix.toLin' (0 : Matrix Empty Empty ℝ))
-        (spectralRadius ℝ (0 : Matrix Empty Empty ℝ)).toReal v := by
-  rintro ⟨v, hv⟩
-  apply hv.2
-  funext i
-  cases i
+    have h_j_eq_i : j = i := by
+      have h_eq_j : x_gen.1.2 = {j} := h_D_eq
+      rw [h_x_gen_1_2_eq] at h_eq_j
+      have : j ∈ {j} := Finset.mem_singleton_self j
+      rw [←h_eq_j] at this
+      exact Finset.eq_of_mem_singleton this
 
+    cases h_door with
+    | idoor h_cell_sigmaC h_door_τD x h_x_notin h_insert_eq h_D_eq_C =>
+      have h_sigma_eq : x_gen.2.1 = {x} := by
+        rw [←h_insert_eq, h_empty]
+        rfl
+      have h_x_eq_max : x = x_max_i := by
+        have h_dom : ∀ y, y ≤[i] x := by
+          intro y
+          obtain ⟨j_dom, hj_in, hj_dom⟩ := h_cell_sigmaC y
+          rw [←h_D_eq_C, h_x_gen_1_2_eq] at hj_in
+          simp at hj_in
+          subst hj_in
+          apply hj_dom
+          rw [h_sigma_eq]
+          simp
+        have h1 : x ≤[i] x_max_i := @Finset.le_max' T (IST i) Finset.univ x (Finset.mem_univ x)
+        have h2 : x_max_i ≤[i] x := h_dom x_max_i
+        exact @le_antisymm T (IST i).toPartialOrder x x_max_i h1 h2
+      apply Prod.ext
+      · apply Prod.ext
+        · exact h_empty
+        · rw [h_x_gen_1_2_eq]
+      · apply Prod.ext
+        · rw [h_sigma_eq, h_x_eq_max]
+        · rw [←h_D_eq_C, h_x_gen_1_2_eq]
+
+    | odoor h_cell_sigmaC h_door_τD j h_j_notin h_τ_eq h_D_insert =>
+      exfalso
+      have h_sigma_empty : x_gen.2.1 = ∅ := by
+        rw [←h_τ_eq, h_empty]
+        rfl
+      let h_door_constructed : isDoorof x_gen.1.1 x_gen.1.2 x_gen.2.1 x_gen.2.2 :=
+        isDoorof.odoor h_cell_sigmaC ⟨h_is_door.1, h_is_door.2⟩ j h_j_notin h_τ_eq h_D_insert
+      have h_room : IST.isRoom x_gen.2.1 x_gen.2.2 := isRoom_of_Door h_door_constructed
+      have h_sigma_nonempty : x_gen.2.1.Nonempty := sigma_nonempty_of_room h_room
+      rw [h_sigma_empty] at h_sigma_nonempty
+      exact Finset.not_nonempty_empty h_sigma_nonempty
+
+  · intro h_eq
+    rw [h_eq]
+    simp only [true_and]
+    constructor
+    · constructor
+      · exact h_typed_nc
+      · exact h_door_relation
+    · exact h_outside_door_τu_Du
+
+variable (c)
+
+
+lemma dbcount_outside_door_odd (i : Idx): Odd (filter (fun x => isOutsideDoor x.1.1 x.1.2) (dbcountingset c i)).card  := by
+  have cardone: (filter (fun x => isOutsideDoor x.1.1 x.1.2) (dbcountingset c i)).card = 1 := by
+    obtain ⟨x,hx⟩ := dbcount_outside_door' c i
+    simp [hx]
+  convert odd_one
+
+omit [Inhabited T] in
+lemma fiber_size_internal_door (c : T → Idx) (i : Idx) (y : Finset T × Finset Idx)
+    (hy_internal : IST.isInternalDoor y.1 y.2) (hy_typed : isTypedNC c i y.1 y.2) :
+    let s := filter (fun x => ¬ isOutsideDoor x.1.1 x.1.2) (dbcountingset c i)
+    let f := fun (x : (Finset T × Finset Idx) × Finset T × Finset Idx) => x.1
+    (filter (fun a => f a = y) s).card = 2 := by
+  obtain ⟨sigma₁, sigma₂, C₁, C₂, h_ne, h_room₁, h_room₂, h_door₁, h_door₂, h_unique⟩ :=
+    internal_door_two_rooms y.1 y.2 hy_internal
+  let s := filter (fun x => ¬ isOutsideDoor x.1.1 x.1.2) (dbcountingset c i)
+  let f := fun (x : (Finset T × Finset Idx) × Finset T × Finset Idx) => x.1
+  let elem1 : (Finset T × Finset Idx) × Finset T × Finset Idx := (y, (sigma₁, C₁))
+  let elem2 : (Finset T × Finset Idx) × Finset T × Finset Idx := (y, (sigma₂, C₂))
+  have elem1_in_s : elem1 ∈ s := by
+    simp only [elem1, s, mem_filter]
+    constructor
+    · simp only [mem_univ, true_and]
+      exact ⟨hy_typed, h_door₁⟩
+    · intro h_outside
+      exact (Finset.nonempty_iff_ne_empty.mp hy_internal.2) h_outside.2
+  have elem2_in_s : elem2 ∈ s := by
+    simp only [elem2, s, mem_filter]
+    constructor
+    · simp only [mem_univ, true_and]
+      exact ⟨hy_typed, h_door₂⟩
+    · intro h_outside
+      exact (Finset.nonempty_iff_ne_empty.mp hy_internal.2) h_outside.2
+  have elems_distinct : elem1 ≠ elem2 := by
+    intro h_eq
+    injection h_eq with _ h_pair_eq
+    exact h_ne h_pair_eq
+  have fiber_eq : filter (fun a => f a = y) s = {elem1, elem2} := by
+    ext x
+    constructor
+    · intro hx
+      rw [mem_filter] at hx
+      obtain ⟨hx_s, hx_eq⟩ := hx
+      rw [mem_filter] at hx_s
+      obtain ⟨hx_db, _⟩ := hx_s
+      rw [mem_filter] at hx_db
+      obtain ⟨_, hx_typed_x, hx_door_x⟩ := hx_db
+      have h_x_form : x = (y, x.2) := Prod.ext_iff.mpr ⟨hx_eq, rfl⟩
+      have h_room_x2 : IST.isRoom x.2.1 x.2.2 := isRoom_of_Door hx_door_x
+      have hx_door_y : isDoorof y.1 y.2 x.2.1 x.2.2 :=
+        hx_eq ▸ hx_door_x
+      obtain h_case1 | h_case2 := h_unique x.2.1 x.2.2 h_room_x2 hx_door_y
+      · simp only [mem_insert, mem_singleton]
+        left
+        rw [h_x_form]
+        apply Prod.ext
+        · rfl
+        · apply Prod.ext
+          · exact h_case1.1
+          · exact h_case1.2
+      · simp only [mem_insert, mem_singleton]
+        right
+        rw [h_x_form]
+        apply Prod.ext
+        · rfl
+        · apply Prod.ext
+          · exact h_case2.1
+          · exact h_case2.2
+    · intro hx
+      simp only [mem_insert, mem_singleton] at hx
+      cases hx with
+      | inl h =>
+        rw [h, mem_filter]
+        exact ⟨elem1_in_s, by simp [f, elem1]⟩
+      | inr h =>
+        rw [h, mem_filter]
+        exact ⟨elem2_in_s, by simp [f, elem2]⟩
+  apply Eq.trans (congrArg Finset.card fiber_eq)
+  exact Finset.card_pair elems_distinct
+
+omit [Inhabited T] in
+lemma dbcount_internal_door_even (i : Idx) : Even (filter (fun x => ¬ isOutsideDoor x.1.1 x.1.2) (dbcountingset c i)).card := by
+  let s := filter (fun x => ¬ isOutsideDoor x.1.1 x.1.2) (dbcountingset c i)
+  let t := filter (fun (x : Finset T × Finset Idx) => IST.isInternalDoor x.1 x.2 ∧ isTypedNC c i x.1 x.2) univ
+  let f := fun (x : (Finset T × Finset Idx) × Finset T × Finset Idx) => x.1
+  have fs_in_t : ∀ x ∈ s, f x ∈ t := by
+    intro x hx
+    rw [mem_filter] at hx
+    obtain ⟨hx_db, hx_not_outside⟩ := hx
+    rw [mem_filter] at hx_db
+    obtain ⟨_, hx_typed, hx_door⟩ := hx_db
+    rw [mem_filter]
+    simp only [mem_univ, true_and]
+    constructor
+    · unfold isInternalDoor
+      constructor
+      · cases hx_door with
+        | idoor h0 h1 y h_notin h_eq h_D_eq_C => exact h1
+        | odoor h0 h1 j h_notin h_eq h_D_eq => exact h1
+      · by_contra h_empty
+        have h_outside : isOutsideDoor x.1.1 x.1.2 := by
+          constructor
+          · cases hx_door with
+            | idoor h0 h1 y h_notin h_eq h_D_eq_C => exact h1
+            | odoor h0 h1 j h_notin h_eq h_D_eq => exact h1
+          · exact Finset.not_nonempty_iff_eq_empty.mp h_empty
+        exact hx_not_outside h_outside
+    · exact hx_typed
+
+  have fiber_size_two : ∀ y ∈ t, (filter (fun a=> f a = y) s).card = 2 := by
+    intro y hy
+    rw [mem_filter] at hy
+    obtain ⟨_, hy_internal, hy_typed⟩ := hy
+    exact fiber_size_internal_door c i y hy_internal hy_typed
+
+  have counteq := Finset.card_eq_sum_card_fiberwise fs_in_t
+  have sumeq := Finset.sum_const_nat fiber_size_two
+  rw [sumeq] at counteq
+  rw [counteq]
+  simp only [even_two, Even.mul_left]
+
+
+omit [Fintype T] [Fintype Idx] [Inhabited T] in
+variable {c} in
+lemma NC_of_NCdoor (h1 : isTypedNC c i τ D)
+(h2 : isDoorof τ D sigma C) :
+  ¬ isColorful c sigma C → isTypedNC c i sigma C := by
+  intro h_not_colorful
+  obtain h_typed | h_colorful := NC_or_C_of_door h1 h2
+  · exact h_typed
+  · contradiction
+
+omit [Inhabited T] in
+variable {c} in
+lemma firber2_doors_NCroom (h0 : isRoom sigma C) (h1 : isTypedNC c i sigma C) :
+  (filter (fun (x : (Finset T× Finset Idx)× Finset T × Finset Idx) => x.2 = (sigma,C)) (dbcountingset c i)).card = 2 := by
+    obtain ⟨door1, door2, h_ne, h_doors_eq⟩ := doors_of_NCroom h0 (NC_of_TNC h1)
+    have h_filter_eq : filter (fun (x : (Finset T× Finset Idx)× Finset T × Finset Idx) => x.2 = (sigma,C)) (dbcountingset c i) =
+                       {(door1, (sigma,C)), (door2, (sigma,C))} := by
+      ext x
+      constructor
+      · intro hx
+        rw [mem_filter] at hx
+        obtain ⟨h_db, h_eq⟩ := hx
+        rw [mem_filter] at h_db
+        obtain ⟨_, h_typed, h_door⟩ := h_db
+        have h_x_form : x = (x.1, (sigma,C)) := by
+          rw [Prod.ext_iff]
+          exact ⟨rfl, h_eq⟩
+        rw [h_x_form]
+        simp
+        have h_x1_in_doors : x.1 ∈ NCdoors c sigma C := by
+          simp [NCdoors]
+          have h_sigma : x.2.1 = sigma := by rw [h_eq]
+          have h_C : x.2.2 = C := by rw [h_eq]
+          rw [h_sigma, h_C] at h_door
+          exact ⟨NC_of_TNC h_typed, h_door⟩
+        rw [h_doors_eq] at h_x1_in_doors
+        simp at h_x1_in_doors
+        exact h_x1_in_doors
+      · intro hx
+        simp at hx
+        cases hx with
+        | inl h =>
+          rw [h, mem_filter]
+          constructor
+          · rw [mem_filter]
+            have h_door1_in_doors : door1 ∈ NCdoors c sigma C := by
+              rw [h_doors_eq]
+              exact Set.mem_insert door1 {door2}
+            simp [NCdoors] at h_door1_in_doors
+            exact ⟨by simp, isTypedNC_of_isNearlyColorful_of_isDoorof_isTypedNC h_door1_in_doors.1 h_door1_in_doors.2 h1, h_door1_in_doors.2⟩
+          · rfl
+        | inr h =>
+          rw [h, mem_filter]
+          constructor
+          · rw [mem_filter]
+            have h_door2_in_doors : door2 ∈ NCdoors c sigma C := by
+              rw [h_doors_eq]
+              exact Set.mem_insert_of_mem door1 (Set.mem_singleton door2)
+            simp [NCdoors] at h_door2_in_doors
+            exact ⟨by simp, isTypedNC_of_isNearlyColorful_of_isDoorof_isTypedNC h_door2_in_doors.1 h_door2_in_doors.2 h1, h_door2_in_doors.2⟩
+          · rfl
+    rw [h_filter_eq]
+    simp [h_ne]
+
+omit [Inhabited T] in
+lemma dbcount_NCroom (i : Idx) : Even (filter (fun x => ¬isColorful c x.2.1 x.2.2) (dbcountingset c i)).card := by
+  let s := filter (fun x => ¬isColorful c x.2.1 x.2.2) (dbcountingset c i)
+  let t := filter (fun (x : Finset T × Finset Idx) => IST.isRoom x.1 x.2 ∧ isTypedNC c i x.1 x.2 ) univ
+  let f := fun (x : (Finset T × Finset Idx)× Finset T × Finset Idx) => x.2
+  have fs_in_t : ∀ x ∈ s, f x ∈ t := by
+    intro x hx;
+    show x.2 ∈ t
+    rw [mem_filter] at hx
+    obtain ⟨hx1,hx2⟩ := hx
+    rw [mem_filter] at hx1
+    rw [mem_filter]
+    refine ⟨by simp, isRoom_of_Door hx1.2.2,?_⟩
+    apply NC_of_NCdoor hx1.2.1 hx1.2.2 hx2
+  have counteq := Finset.card_eq_sum_card_fiberwise fs_in_t
+  have fiber_sizetwo :∀ y ∈ t, #(filter (fun a=> f a = y) s) = 2  :=
+    by
+      intro y hy
+      rw [Finset.mem_filter] at hy
+      obtain ⟨_,hy1,hy2⟩ := hy
+      unfold s
+      rw [filter_filter]
+      have f2 := firber2_doors_NCroom hy1 hy2
+      rw [<-f2]
+      congr 1
+      apply filter_congr
+      intro x hx
+      rw [mem_filter] at hx
+      obtain ⟨hx1,hx2,hx3⟩ := hx
+      unfold f
+      constructor
+      · simp
+      · intro h
+        simp_rw [h,and_true]
+        exact not_colorful_of_TypedNC hy2
+  have sumeq := Finset.sum_const_nat fiber_sizetwo
+  rw [sumeq] at counteq
+  rw [counteq]
+  simp only [even_two, Even.mul_left]
+
+lemma parity_lemma {a b c d : ℕ } (h1 : Odd a) (h2 : Even b) (h3 : Even d) (h4 : a + b = c + d ): Odd c := by
+  by_contra h0
+  replace h0 := Nat.not_odd_iff_even.1 h0
+  have oddab := Even.odd_add h2 h1
+  rw [h4] at oddab
+  have evencd := Even.add h0 h3
+  exact Nat.not_odd_iff_even.2 evencd oddab
+
+
+theorem _root_.Finset.card_filter_filter_neg {α : Type*} (s : Finset α) (p : α → Prop) [DecidablePred p]
+ : s.card  = (Finset.filter p s).card + (Finset.filter (fun (a : α) => ¬p a) s).card :=
+  by
+    nth_rw 1 [<-Finset.filter_union_filter_not_eq p s]
+    apply Finset.card_union_eq_card_add_card.2 (Finset.disjoint_filter_filter_not _ _ _)
+
+lemma typed_colorful_room_odd  (i : Idx): Odd (Finset.filter (fun (x: (Finset T× Finset Idx) × Finset T × Finset Idx) =>  isColorful c x.2.1 x.2.2) (dbcountingset c i)).card
+:= by
+  let s:= dbcountingset c i
+  have cardeq' := Finset.card_filter_filter_neg s (fun x => isOutsideDoor x.1.1 x.1.2)
+  have cardeq := Finset.card_filter_filter_neg s (fun x => isColorful c x.2.1 x.2.2)
+  apply parity_lemma (dbcount_outside_door_odd c i) (dbcount_internal_door_even c i) (dbcount_NCroom c i)
+  rw [<-cardeq',<-cardeq]
+
+variable [Inhabited Idx]
+
+theorem Scarf : (IST.colorful c).Nonempty := by
+  have cardpos := Odd.pos $ typed_colorful_room_odd c default
+  replace nonempty:= Finset.card_pos.1 cardpos
+  obtain ⟨x,hx⟩ := nonempty
+  replace hx := (Finset.mem_filter.1 hx).2
+  use x.2
+  simp only [mem_filter, mem_univ, hx, and_self]
+
+
+end Scarf
+
+end IndexedLOrder
+
+end ScarfLib
+
+
+open Classical
+
+section
+
+instance Pi.Lex.finite {α : Type*} {β : α → Type*} [DecidableEq α] [Finite α]
+    [∀ a, Finite (β a)] : Finite (Πₗ a, β a) :=
+        (Equiv.finite_iff toLex).1 Pi.finite
+
+end
+
+noncomputable section
+open IndexedLOrder
+
+variable (n l : ℕ+) (i : Fin n)
+
+abbrev TT := {x : Πₗ (_ : Fin n), Fin (l+1) | ∑ i, (x i : ℕ)  = l}
+
+instance TT.finite : Finite (TT n l) := by
+  rw [Set.coe_eq_subtype]
+  exact Subtype.finite
+
+instance TT.inhabited : Inhabited (TT n l) where
+  default :=
+    ⟨ fun i => if i = 0 then Fin.last l else 0,  by
+      simp only [TT, Set.mem_setOf_eq]
+      rw [Finset.sum_eq_single (0 : Fin n)]
+      · simp
+      · intro b _ hb; simp [hb]
+      · simp [Fin.val_last] ⟩
+
+instance TT.funlike : FunLike (TT n l) (Fin n) (Fin (l+1)) where
+  coe := fun a => a.1
+  coe_injective' := by
+    intro a b h
+    exact Subtype.ext h
+
+variable {n l} in
+def TTtostdSimplex (x : TT n l) : stdSimplex ℝ (Fin n) := ⟨fun i => x i / l, by
+  rw [stdSimplex]
+  constructor
+  · intro;simp only[Set.coe_setOf]
+    apply div_nonneg <;> simp
+  · simp only [Set.coe_setOf];
+    rw [<-Finset.sum_div, div_eq_one_iff_eq]
+    · exact_mod_cast x.2
+    · exact Iff.mpr Nat.cast_ne_zero (PNat.ne_zero l)
+  ⟩
+
+instance TT.CoestdSimplex : CoeOut (TT n l) (stdSimplex ℝ (Fin n)) where
+  coe := TTtostdSimplex
+
+
+variable {n l} in
+abbrev TT.Ilt (x y : TT n l) :=
+  toLex (x i, x.1) < toLex (y i, y.1)
+
+variable {n l} in
+instance TT.ILO : IndexedLOrder (Fin n) (TT n l) where
+  IST := fun i => LinearOrder.lift' (fun x : TT n l => toLex (x i, x.1)) (by
+    intro a b h
+    have hp : (a i, a.1) = (b i, b.1) := congrArg ofLex h
+    exact Subtype.ext (congrArg Prod.snd hp))
+
+set_option quotPrecheck false
+local notation  lhs "<[" i "]" rhs => (IndexedLOrder.IST i).lt lhs rhs
+local notation  lhs "≤[" i "]" rhs => (IndexedLOrder.IST i).le lhs rhs
+
+lemma TT.Ilt_def (a b : TT n l) :
+  (a <[i] b) ↔ TT.Ilt i a b := by
+  rfl
+
+lemma TT.Ilt_keyprop (a b : TT n l) :
+  a i < b i → a <[i] b := by
+  intro h
+  change toLex (a i, a.1) < toLex (b i, b.1)
+  rw [Prod.Lex.lt_iff]
+  exact Or.inl h
+
+lemma size_bound_key (sigma : Finset (TT n l)) (C : Finset (Fin n)) (h : TT.ILO.isDominant sigma C)
+(h2 : sigma.Nonempty):
+  l < ∑ k ∈ C, (sigma.image (fun x => (x k : ℕ))).min' (Finset.image_nonempty.mpr h2) + C.card := by
+  by_contra h_not
+  push Not at h_not
+  let m := fun k => (sigma.image (fun x => (x k : ℕ))).min' (Finset.image_nonempty.mpr h2)
+  have h_sum_bound : ∑ k ∈ C, m k + C.card ≤ l := h_not
+  have h_sum_plus_one : ∑ k ∈ C, (m k + 1) ≤ l := by
+    rw [Finset.sum_add_distrib, Finset.sum_const, nsmul_one]
+    exact h_sum_bound
+  have h_exists_point : ∃ M : TT n l, ∀ k ∈ C, m k + 1 ≤ M k := by
+    let M' : Fin n → ℕ := fun k => if k ∈ C then m k + 1 else 0
+    let S := ∑ k, M' k
+    have h_S_le_l : S ≤ l := by
+      simp [S, M', h_sum_plus_one]
+    let R := l - S
+    let M_coords : Fin n → ℕ := fun k => if k = (0 : Fin n) then M' 0 + R else M' k
+    have h_M_coords_sum : ∑ k, M_coords k = l := by
+      have h1 : S = M' 0 + ∑ k ∈ (Finset.univ : Finset (Fin n)).erase 0, M' k := by
+        simp [S]
+        rw [← Finset.sum_insert (Finset.notMem_erase 0 Finset.univ)]
+        rw [Finset.insert_erase (Finset.mem_univ 0)]
+      have : ∑ k, M_coords k = M_coords 0 + ∑ k ∈ (Finset.univ : Finset (Fin n)).erase 0, M_coords k := by
+        rw [← Finset.sum_insert (Finset.notMem_erase 0 Finset.univ)]
+        rw [Finset.insert_erase (Finset.mem_univ 0)]
+      rw [this]
+      simp only [M_coords, if_true]
+      have sum_eq : ∑ x ∈ Finset.univ.erase 0, (if x = 0 then M' 0 + R else M' x) = ∑ x ∈ Finset.univ.erase 0, M' x := by
+        apply Finset.sum_congr rfl
+        intro k hk
+        simp only [if_neg (Finset.ne_of_mem_erase hk)]
+      rw [sum_eq, add_comm (M' 0) R, add_assoc, ← h1]
+      simp only [R]
+      have hM'0_le_S : M' 0 ≤ S := by
+        have : M' 0 ≤ ∑ k, M' k := Finset.single_le_sum (fun _ _ => Nat.zero_le _) (Finset.mem_univ 0)
+        exact this
+      omega
+
+    have h_M_coords_bound : ∀ k, M_coords k ≤ l := by
+      intro k
+      by_cases h_is_zero : k = 0
+      · simp [h_is_zero, M_coords, R]
+        have hM'0_le_S : M' 0 ≤ S := by
+          have : M' 0 ≤ ∑ k, M' k := Finset.single_le_sum (fun _ _ => Nat.zero_le _) (Finset.mem_univ 0)
+          exact this
+        omega
+      · simp [h_is_zero, M_coords]
+        by_cases hk_in_C : k ∈ C
+        · simp [M', hk_in_C]; exact Nat.le_trans (Finset.single_le_sum (fun k _ => Nat.zero_le (m k + 1)) hk_in_C) h_sum_plus_one
+        · simp [M', hk_in_C]
+    let M_val : Fin n → Fin (l + 1) := fun k => ⟨M_coords k, Nat.lt_succ_of_le (h_M_coords_bound k)⟩
+    use ⟨M_val, by simp [M_val, h_M_coords_sum]⟩
+    intro k hk_in_C
+    change m k < M_coords k
+    by_cases h_is_zero : k = 0
+    · subst k
+      dsimp [M_coords, M']
+      simp [hk_in_C]
+      omega
+    · dsimp [M_coords, M']
+      simp [h_is_zero, hk_in_C]
+  obtain ⟨M, hM⟩ := h_exists_point
+  have h_min_less : ∀ k ∈ C, ∃ x_min ∈ sigma, ∀ x ∈ sigma, x_min ≤[k] x := by
+    intro k _
+    letI : LinearOrder (TT n l) := IndexedLOrder.IST k
+    let x_min := sigma.min' h2
+    use x_min
+    constructor
+    · exact Finset.min'_mem sigma h2
+    · intro x hx
+      exact Finset.min'_le sigma x hx
+  have h_contradiction : ∀ k ∈ C, ∃ x_min ∈ sigma, x_min <[k] M := by
+    intro k hk_in_C
+    letI : LinearOrder (TT n l) := IndexedLOrder.IST k
+    let x_min := sigma.min' h2
+    use x_min
+    constructor
+    · exact Finset.min'_mem sigma h2
+    · apply TT.Ilt_keyprop
+      have h_min_coord : (x_min k : ℕ) = (sigma.image (fun x => (x k : ℕ))).min' (Finset.image_nonempty.mpr h2) := by
+        symm
+        apply le_antisymm
+        · apply Finset.min'_le
+          apply Finset.mem_image_of_mem
+          exact Finset.min'_mem sigma h2
+        · apply Finset.le_min'
+          intro y hy
+          rcases Finset.mem_image.mp hy with ⟨x, hx, rfl⟩
+          have h_x_min_le_x : x_min ≤[k] x := Finset.min'_le sigma x hx
+          by_cases h_case : (x_min k : ℕ) ≤ (x k : ℕ)
+          · exact h_case
+          · exfalso
+            push Not at h_case
+            have h_x_lt_min : x <[k] x_min := by
+              apply TT.Ilt_keyprop
+              exact h_case
+            exact not_lt.mpr h_x_min_le_x h_x_lt_min
+      have h_nat_lt : (x_min k : ℕ) < (M k : ℕ) := by
+        rw [h_min_coord]
+        exact Nat.lt_of_succ_le (hM k hk_in_C)
+      exact h_nat_lt
+  have h_not_dominant : ¬ TT.ILO.isDominant sigma C := by
+    intro hdom
+    rcases hdom M with ⟨k, hk, hall⟩
+    rcases h_contradiction k hk with ⟨x, hx, hlt⟩
+    exact (@not_le_of_gt (TT n l) (IndexedLOrder.IST k).toPreorder x M hlt) (hall x hx)
+  exact h_not_dominant h
+
+
+
+theorem size_bound_in (sigma : Finset (TT n l)) (C : Finset (Fin n)) (h : TT.ILO.isDominant sigma C):
+    ∀ x ∈ sigma, ∀ y ∈ sigma, ∀ i : Fin n, abs ((x i : ℤ) - (y i : ℤ)) < 2 * (n + 1)
+    := by
+  by_cases hsigma : sigma.Nonempty
+  · intro x hx y hy i
+    let m k := (sigma.image (fun z => (z k : ℕ))).min' (Finset.image_nonempty.mpr hsigma)
+    let m' i := if h_i : i ∈ C then m i else 0
+    have h_le_l_sub_sum : (l : ℕ) - ∑ k ∈ C, m k < C.card := by
+      have h_key : l < ∑ k ∈ C, m k + C.card := size_bound_key n l sigma C h hsigma
+      have h_sum_le_l : ∑ k ∈ C, m k ≤ l := by
+        rcases hsigma with ⟨x, hx⟩
+        have h_m_le : ∀ k ∈ C, m k ≤ (x k : ℕ) := fun k _ =>
+          Finset.min'_le (sigma.image (fun z => (z k : ℕ))) (x k : ℕ) (Finset.mem_image_of_mem (fun z => (z k : ℕ)) hx)
+        calc
+          ∑ k ∈ C, m k ≤ ∑ k ∈ C, (x k : ℕ) := Finset.sum_le_sum h_m_le
+          _ ≤ ∑ k, (x k : ℕ) := Finset.sum_le_sum_of_subset_of_nonneg (Finset.subset_univ C) (by simp)
+          _ = l := x.2
+      rw [Nat.sub_lt_iff_lt_add h_sum_le_l, add_comm]
+      exact h_key
+    have h_bound : ∀ z ∈ sigma, (z i : ℕ) - m' i < C.card := by
+      intro z hz
+      by_cases hi_in_C : i ∈ C
+      · simp [m', hi_in_C]
+        have h_mi_le_zi : m i ≤ (z i : ℕ) := by
+          apply Finset.min'_le
+          apply Finset.mem_image_of_mem
+          exact hz
+        have h_zi_le_sum : (z i : ℕ) ≤ ∑ k ∈ C, (z k : ℕ) :=
+          Finset.single_le_sum (fun k _ => Nat.zero_le (z k : ℕ)) hi_in_C
+        have h_sum_z_le_l : ∑ k ∈ C, (z k : ℕ) ≤ l := by
+          calc ∑ k ∈ C, (z k : ℕ) ≤ ∑ k, (z k : ℕ) :=
+            Finset.sum_le_sum_of_subset_of_nonneg (Finset.subset_univ C) (by simp)
+          _ = l := z.2
+        have h_diff_bound : (z i : ℕ) - m i ≤ l - ∑ k ∈ C, m k := by
+          calc
+          (z i : ℕ) - m i ≤ ∑ k ∈ C, ((z k : ℕ) - m k) :=
+            Finset.single_le_sum (fun k _ => Nat.zero_le ((z k : ℕ) - m k)) hi_in_C
+          _ = (∑ k ∈ C, (z k : ℕ)) - (∑ k ∈ C, m k) := by
+            rw [Finset.sum_tsub_distrib]
+            intro k hk
+            apply Finset.min'_le
+            apply Finset.mem_image_of_mem
+            exact hz
+          _ ≤ l - ∑ k ∈ C, m k := by
+            apply Nat.sub_le_sub_right
+            calc
+              ∑ k ∈ C, (z k : ℕ) ≤ ∑ k, (z k : ℕ) := Finset.sum_le_sum_of_subset_of_nonneg (Finset.subset_univ C) (by simp)
+              _ = l := z.2
+        exact lt_of_le_of_lt h_diff_bound h_le_l_sub_sum
+
+      · simp [m', hi_in_C]
+        have h_sum_le : (z i : ℕ) + ∑ k ∈ C, (z k : ℕ) ≤ l := by
+          calc
+            (z i : ℕ) + ∑ k ∈ C, (z k : ℕ) = ∑ k ∈ insert i C, (z k : ℕ) := by
+              rw [Finset.sum_insert hi_in_C]
+            _ ≤ ∑ k, (z k : ℕ) := Finset.sum_le_sum_of_subset_of_nonneg (Finset.subset_univ _) (by simp)
+            _ = l := z.2
+        have h_le_sub : (z i : ℕ) ≤ l - ∑ k ∈ C, (z k : ℕ) := Nat.le_sub_of_add_le h_sum_le
+        have h_m_le_z : ∑ k ∈ C, m k ≤ ∑ k ∈ C, (z k : ℕ) := by
+          apply Finset.sum_le_sum
+          intro k hk
+          apply Finset.min'_le
+          apply Finset.mem_image_of_mem
+          exact hz
+        have h_sub_le_sub : l - ∑ k ∈ C, (z k : ℕ) ≤ l - ∑ k ∈ C, m k :=
+          Nat.sub_le_sub_left h_m_le_z l
+        exact lt_of_le_of_lt (h_le_sub.trans h_sub_le_sub) h_le_l_sub_sum
+    have h_nonneg : ∀ z ∈ sigma, 0 ≤ (z i : ℤ) - (m' i : ℤ) := by
+      intro z hz
+      by_cases hi_in_C : i ∈ C
+      · simp [m', hi_in_C]
+        have h_min_le : m i ≤ ↑(z i) := by
+          apply Finset.min'_le
+          apply Finset.mem_image_of_mem
+          exact hz
+        exact_mod_cast h_min_le
+      · simp [m', hi_in_C]
+
+    have h_abs_lt_2_card : abs ((x i : ℤ) - (y i : ℤ)) < 2 * (C.card : ℤ) := by
+      have h_bound_int : ∀ z ∈ sigma, (z i : ℤ) - (m' i : ℤ) < C.card := by
+        intro z hz
+        have := h_bound z hz
+        simp only [m'] at this ⊢
+        split_ifs at this ⊢ with h_case
+        · have : (z i : ℕ) - m i < C.card := this
+          simp
+          have h_le : m i ≤ (z i : ℕ) := by
+            apply Finset.min'_le
+            apply Finset.mem_image_of_mem
+            exact hz
+          exact (Int.ofNat_sub h_le) ▸ (Int.ofNat_lt.mpr this)
+        · simp only [Int.ofNat_zero, sub_zero]
+          exact Int.ofNat_lt.mpr this
+      calc
+        abs ((x i : ℤ) - (y i : ℤ)) = abs (((x i : ℤ) - (m' i : ℤ)) - ((y i : ℤ) - (m' i : ℤ))) := by rw [sub_sub_sub_cancel_right]
+        _ ≤ abs ((x i : ℤ) - (m' i : ℤ)) + abs ((y i : ℤ) - (m' i : ℤ)) := abs_sub _ _
+        _ = ((x i : ℤ) - (m' i : ℤ)) + ((y i : ℤ) - (m' i : ℤ)) := by
+          rw [abs_of_nonneg (h_nonneg x hx), abs_of_nonneg (h_nonneg y hy)]
+        _ < (C.card : ℤ) + (C.card : ℤ) := by
+          apply add_lt_add (h_bound_int x hx) (h_bound_int y hy)
+        _ = 2 * (C.card : ℤ) := by rw [two_mul]
+    have h_card_le_n : C.card ≤ n :=
+      calc
+        C.card ≤ (Finset.univ : Finset (Fin n)).card := Finset.card_le_card (Finset.subset_univ C)
+        _ = n := by simp
+    apply lt_trans h_abs_lt_2_card
+    have : (2 * (C.card : ℤ)) < 2 * (n + 1 : ℤ) := by
+      linarith [Int.ofNat_le.mpr h_card_le_n]
+    exact this
+  · intro x hx y hy i
+    exfalso
+    exact hsigma ⟨x, hx⟩
+
+theorem size_bound_out (sigma : Finset (TT n l)) (C : Finset (Fin n)) (h : TT.ILO.isDominant sigma C):
+    ∀ x ∈ sigma, ∀ i ∉ C, (x i : ℤ) < n + 1
+    := by
+  by_cases hsigma : sigma.Nonempty
+  · intro x hx i hi_not_C
+    let m k := (sigma.image (fun z => (z k : ℕ))).min' (Finset.image_nonempty.mpr hsigma)
+    have h_le_l_sub_sum : l - ∑ k ∈ C, m k < C.card := by
+      have h_sum_le_l : ∑ k ∈ C, m k ≤ l := by
+        rcases hsigma with ⟨x, hx⟩
+        have h_m_le : ∀ k ∈ C, m k ≤ (x k : ℕ) := fun k _ =>
+          Finset.min'_le (sigma.image (fun z => (z k : ℕ))) (x k : ℕ) (Finset.mem_image_of_mem (fun z => (z k : ℕ)) hx)
+        calc
+          ∑ k ∈ C, m k ≤ ∑ k ∈ C, (x k : ℕ) := Finset.sum_le_sum h_m_le
+          _ ≤ ∑ k, (x k : ℕ) := Finset.sum_le_sum_of_subset_of_nonneg (Finset.subset_univ C) (by simp)
+          _ = l := x.2
+      rw [Nat.sub_lt_iff_lt_add h_sum_le_l, add_comm]
+      exact size_bound_key n l sigma C h hsigma
+    have h_bound : (x i : ℕ) < C.card := by
+      have h_sum_le : (x i : ℕ) + ∑ k ∈ C, (x k : ℕ) ≤ l := by
+        calc
+          (x i : ℕ) + ∑ k ∈ C, (x k : ℕ) = ∑ k ∈ insert i C, (x k : ℕ) := by
+            rw [Finset.sum_insert hi_not_C]
+          _ ≤ ∑ k, (x k : ℕ) := Finset.sum_le_sum_of_subset_of_nonneg (Finset.subset_univ _) (by simp)
+          _ = l := x.2
+      have h_le_sub : (x i : ℕ) ≤ l - ∑ k ∈ C, (x k : ℕ) := Nat.le_sub_of_add_le h_sum_le
+      have h_m_le_x : ∑ k ∈ C, m k ≤ ∑ k ∈ C, (x k : ℕ) := by
+        apply Finset.sum_le_sum
+        intro k _
+        apply Finset.min'_le
+        apply Finset.mem_image_of_mem
+        exact hx
+      have h_sub_le_sub : l - ∑ k ∈ C, (x k : ℕ) ≤ l - ∑ k ∈ C, m k :=
+        Nat.sub_le_sub_left h_m_le_x l
+      exact lt_of_le_of_lt (h_le_sub.trans h_sub_le_sub) h_le_l_sub_sum
+    have h_card_le_n : C.card ≤ n := by
+      calc
+        C.card ≤ (Finset.univ : Finset (Fin n)).card := Finset.card_le_card (Finset.subset_univ C)
+        _ = n := by simp [Fintype.card_fin]
+    have h_lt_n : (x i : ℤ) < ↑n := by
+      apply lt_of_lt_of_le
+      · exact Int.ofNat_lt.mpr h_bound
+      · exact Int.ofNat_le.mpr h_card_le_n
+    linarith
+  · intro x hx
+    exfalso
+    exact hsigma ⟨x, hx⟩
+
+section Brouwer
+
+
+
+variable (f : stdSimplex ℝ (Fin n) → stdSimplex ℝ (Fin n))
+
+variable {n l}
+
+instance stdSimplex.upidx (x y : stdSimplex ℝ (Fin n)) : Nonempty { i | x.1 i ≤ y.1 i} := by
+  by_contra h
+  push Not at h
+  have sum_x_eq_1 := x.2.2
+  have sum_y_eq_1 := y.2.2
+  have sum_lt : Finset.sum Finset.univ y.1 < Finset.sum Finset.univ x.1 := by
+    apply Finset.sum_lt_sum_of_nonempty
+    . exact Finset.univ_nonempty
+    . intro i _
+      have : ¬ (x.1 i ≤ y.1 i) := by
+        intro hle
+        exact h.elim ⟨i, hle⟩
+      exact lt_of_not_ge this
+  rw [sum_y_eq_1, sum_x_eq_1] at sum_lt
+  exact (lt_irrefl 1 sum_lt).elim
+
+
+noncomputable def stdSimplex.pick (x  y : stdSimplex ℝ (Fin n)) := Classical.choice $ stdSimplex.upidx x y
+
+
+
+def Fcolor (x : TT n l) : Fin n := stdSimplex.pick x (f x)
+
+def room_seq (l' : ℕ) :=
+  let l : PNat := ⟨l'+1,Nat.zero_lt_succ _⟩
+  Classical.choice (TT.ILO.Scarf (@Fcolor n l f)).to_subtype
+
+def room_point_seq (l' : ℕ) := pick_colorful_point
+(Finset.mem_filter.1 (room_seq f l').2).2 |>.1
+
+
+
+section finiteness
+
+
+def mk_subseq (f : ℕ → ℕ) (h : ∀ n, n < f n) : ℕ → ℕ
+  | 0 => f 0
+  | n+1 => f (mk_subseq f h n)
+
+theorem exists_subseq_constant_of_finite_image {s : Finset α} (e : ℕ → α) (he : ∀ n, e n ∈ s ) :
+  ∃ a ∈ s, ∃ g : ℕ ↪o ℕ,  (∀ n, e (g n) = a) := by
+
+  have range_subset : Set.range e ⊆ (s : Set α) := Set.range_subset_iff.mpr he
+  have range_finite : (Set.range e).Finite := s.finite_toSet.subset range_subset
+  let imgs : Finset α := Finset.filter (fun a => ¬(Set.Finite (e ⁻¹' {a}))) s
+  have imgs_nonempty : imgs.Nonempty := by
+    by_contra h
+    simp only [Finset.not_nonempty_iff_eq_empty] at h
+    have preimages_all_finite : ∀ a ∈ s, Set.Finite (e ⁻¹' {a}) := by
+      intro a ha
+      by_contra hnf
+      have a_in_imgs : a ∈ imgs := by
+        simp only [imgs, Finset.mem_filter, ha, true_and]
+        exact hnf
+      have : imgs ≠ ∅ := Finset.ne_empty_of_mem a_in_imgs
+      contradiction
+    have nat_finite : Set.Finite (Set.univ : Set ℕ) := by
+      have univ_eq : Set.univ = e ⁻¹' (s : Set α) := by ext n; simp [he]
+      rw [univ_eq]
+      have : e ⁻¹' (s : Set α) = ⋃ a ∈ s, e ⁻¹' {a} := by
+        ext n; simp [ Set.mem_preimage]
+      rw [this]
+      exact Set.Finite.biUnion s.finite_toSet preimages_all_finite
+    exact Set.infinite_univ nat_finite
+
+  obtain ⟨a, a_in_imgs⟩ := imgs_nonempty
+  have a_in_s : a ∈ s := (Finset.mem_filter.1 a_in_imgs).1
+  have a_infinite_preimage : ¬Set.Finite (e ⁻¹' {a}) := (Finset.mem_filter.1 a_in_imgs).2
+
+  use a, a_in_s
+  let preimage := e ⁻¹' {a}
+  have preimage_infinite : Set.Infinite preimage := a_infinite_preimage
+
+  have h_nonempty : preimage.Nonempty := by
+    by_contra h_empty
+    rw [Set.not_nonempty_iff_eq_empty] at h_empty
+    rw [h_empty] at preimage_infinite
+    exact Set.finite_empty.not_infinite preimage_infinite
+  obtain ⟨m₀, hm₀⟩ := h_nonempty
+  have h_exists_larger : ∀ k : ℕ, ∃ m ∈ preimage, k < m := by
+    intro k
+    by_contra h_not
+    push Not at h_not
+    have : preimage ⊆ {n | n ≤ k} := fun n hn => h_not n hn
+    have h_finite : Set.Finite preimage := (Set.finite_le_nat k).subset this
+    exact preimage_infinite h_finite
+  choose f hf using h_exists_larger
+  have f_lt : ∀ n : ℕ, n < f n := fun n => (hf n).2
+  have f_in : ∀ n : ℕ, f n ∈ preimage := fun n => (hf n).1
+  let g := mk_subseq f f_lt
+  have hg_in : ∀ n, g n ∈ preimage := by
+    intro n
+    induction' n with n ih
+    · simp [g, mk_subseq]; exact f_in 0
+    · simp [g, mk_subseq]; exact f_in (g n)
+  have hg_strict : StrictMono g := by
+    intro m n hmn
+    induction' hmn with n hmn ih
+    · simp [g, mk_subseq]
+      exact f_lt (g m)
+    · simp [g, mk_subseq]
+      exact lt_trans ih (f_lt (g n))
+  use OrderEmbedding.ofStrictMono g hg_strict
+  intro n
+  exact hg_in n
+
+end finiteness
+
+lemma constant_index_set_nonempty : Nonempty {(a, g) :(Finset (Fin n)) × (ℕ ↪o ℕ) | ∀ l', (room_seq f (g l')).1.2 = a } := by
+  obtain ⟨a, ha,g,hg⟩ := exists_subseq_constant_of_finite_image (s := Finset.univ)
+    (fun x => (room_seq f x).1.2) (by simp)
+  use ⟨a,g⟩; simp [hg]
+
+
+
+def gpkg :=  Classical.choice $ constant_index_set_nonempty f
+
+abbrev g1 := gpkg f |>.1.2
+
+
+open Topology
+open Filter
+
+
+
+lemma dominant_coords_tend_to_zero (f : stdSimplex ℝ (Fin n) → stdSimplex ℝ (Fin n)) (C : Finset (Fin n)) (g : ℕ ↪o ℕ) (h_const : ∀ l', (room_seq f (g l')).1.2 = C) :
+  ∀ i ∉ C, Filter.Tendsto (fun l' => ((room_point_seq f (g l')) : stdSimplex ℝ (Fin n)).1 i) Filter.atTop (𝓝 0) := by
+  intro i hiC
+  have h_tendsto_bound : Filter.Tendsto (fun l' => ((n : ℝ) + 1) / ((g l' : ℝ) + 1)) Filter.atTop (𝓝 0) := by
+    have h_denom_tendsto : Filter.Tendsto (fun l' => (g l' : ℝ) + 1) Filter.atTop Filter.atTop := by
+      have g_tendsto : Filter.Tendsto (fun l' => g l') Filter.atTop Filter.atTop := by
+        apply Filter.tendsto_atTop_atTop.mpr
+        intro b
+        use b
+        intro l' hl'
+        exact le_trans hl' (StrictMono.id_le g.strictMono l')
+      have cast_tendsto : Filter.Tendsto (fun l' => (g l' : ℝ)) Filter.atTop Filter.atTop :=
+        Filter.Tendsto.comp tendsto_natCast_atTop_atTop g_tendsto
+      exact Tendsto.atTop_add cast_tendsto (tendsto_const_nhds : Tendsto (fun _ : ℕ => (1 : ℝ)) atTop (𝓝 1))
+    have : Tendsto (fun l' => ((n : ℝ) + 1) / ((g l' : ℝ) + 1)) atTop (𝓝 0) :=
+      Tendsto.div_atTop tendsto_const_nhds h_denom_tendsto
+    exact this
+  apply tendsto_of_tendsto_of_tendsto_of_le_of_le (tendsto_const_nhds : Tendsto (fun _ : ℕ => (0 : ℝ)) atTop (𝓝 0)) h_tendsto_bound
+  · intro l'
+    exact ((room_point_seq f (g l')) : stdSimplex ℝ (Fin n)).2.1 i
+  · intro l'
+    let l_pnat : PNat := ⟨g l' + 1, Nat.succ_pos _⟩
+    let rs := room_seq f (g l')
+    let sigma := rs.1.1
+    let C_l := rs.1.2
+    have h_C_l : C_l = C := h_const l'
+    have hiC_l : i ∉ C_l := h_C_l ▸ hiC
+    let x := room_point_seq f (g l')
+    let colorful_proof := (Finset.mem_filter.mp rs.2).2
+    have hx_mem : x ∈ sigma := (pick_colorful_point colorful_proof).2
+    have h_dom : TT.ILO.isDominant sigma C_l := colorful_proof.1
+    have h_bound := size_bound_out n l_pnat sigma C_l h_dom x hx_mem i hiC_l
+    simp only [TTtostdSimplex, Subtype.coe_mk]
+    have h_eq : (↑l_pnat : ℝ) = ↑(g l') + 1 := by simp [l_pnat, PNat.mk_coe]
+    rw [h_eq]
+    rw [div_le_div_iff_of_pos_right (by positivity : (0 : ℝ) < ↑(g l') + 1)]
+    have h_bound_real : ((x i : ℕ) : ℝ) < (↑n + 1 : ℝ) := by
+      exact_mod_cast Nat.lt_succ_of_le (Int.ofNat_le.mp (Int.le_of_lt_add_one h_bound))
+    exact le_of_lt h_bound_real
+
+@[reducible]
+def hpkg_aux :
+  Nonempty {(z , h) : (stdSimplex ℝ  (Fin n)) × (ℕ → ℕ) | StrictMono h ∧ Filter.Tendsto
+    ((fun l' => (room_point_seq f (g1 f l'): stdSimplex ℝ (Fin n))) ∘ h)
+    Filter.atTop (𝓝 z) } := by
+  let u := fun l' : ℕ => (room_point_seq f (g1 f l') : stdSimplex ℝ (Fin n))
+  have h_compact : IsCompact (Set.univ : Set (stdSimplex ℝ (Fin n))) := isCompact_univ
+  have h_in_univ : ∀ n, u n ∈ Set.univ := fun _ => Set.mem_univ _
+  obtain ⟨z, hz, φ, φ_mono, h_tendsto⟩ := h_compact.tendsto_subseq h_in_univ
+  use ⟨z, φ⟩
+  exact ⟨φ_mono, h_tendsto⟩
+
+def hpkg := Classical.choice  (hpkg_aux f)
+
+
+
+theorem tendsto_diam_to_zero (f : stdSimplex ℝ (Fin n) → stdSimplex ℝ (Fin n)) :
+  Tendsto (fun k =>
+    Metric.diam
+      (((room_seq f (g1 f ((hpkg f).1.2 k))).1.1.image
+        (fun x => TTtostdSimplex x) : Finset (stdSimplex ℝ (Fin n))) :
+          Set (stdSimplex ℝ (Fin n)))) atTop (𝓝 0) := by
+  let l k := g1 f ((hpkg f).1.2 k)
+  let sigma k := (room_seq f (l k)).1.1
+  let projected_sigma k := (sigma k).image (fun x => TTtostdSimplex x)
+  have h_diam_bounded : ∃ (C : ℝ), ∀ k,
+      Metric.diam ((projected_sigma k : Finset (stdSimplex ℝ (Fin n))) :
+        Set (stdSimplex ℝ (Fin n))) ≤ C / (l k + 1) := by
+    use 2 * Real.sqrt (n : ℝ) * ((n : ℝ) + 1)
+    intro k
+    let l_pnat : PNat := ⟨l k + 1, Nat.succ_pos _⟩
+    let rs := room_seq f (l k)
+    let C_k := rs.1.2
+    have h_dom : TT.ILO.isDominant (sigma k) C_k := (Finset.mem_filter.mp rs.2).2.1
+    have h_coord_bound : ∀ x ∈ (sigma k), ∀ y ∈ (sigma k), ∀ i : Fin n,
+        abs (((TTtostdSimplex x).1 i : ℝ) - ((TTtostdSimplex y).1 i : ℝ)) < 2 * ((n : ℝ) + 1) / (l k + 1) := by
+      intro x hx y hy i
+      have h_bound_int := size_bound_in n l_pnat (sigma k) C_k h_dom x hx y hy i
+      simp only [TTtostdSimplex]
+      rw [← sub_div]
+      rw [abs_div]
+      have h_pos : (0 : ℝ) < l_pnat := by positivity
+      rw [abs_of_pos h_pos]
+      have h_eq : (l_pnat : ℝ) = l k + 1 := by simp [l_pnat, PNat.mk_coe]
+      rw [h_eq]
+      rw [div_lt_div_iff_of_pos_right (by positivity : (0 : ℝ) < l k + 1)]
+      exact_mod_cast h_bound_int
+    have h_dist_bound : ∀ x ∈ (sigma k), ∀ y ∈ (sigma k),
+        dist (TTtostdSimplex x) (TTtostdSimplex y) ≤ 2 * Real.sqrt (n : ℝ) * ((n : ℝ) + 1) / (l k + 1) := by
+      intro x hx y hy
+      have h_coord_diff_le : ∀ i, |(TTtostdSimplex x).1 i - (TTtostdSimplex y).1 i| ≤ 2 * (↑n + 1) / (↑(l k) + 1) :=
+        fun i => le_of_lt (h_coord_bound x hx y hy i)
+      calc dist (TTtostdSimplex x) (TTtostdSimplex y)
+        = ‖(TTtostdSimplex x).1 - (TTtostdSimplex y).1‖ := rfl
+      _ ≤ 2 * (↑n + 1) / (l k + 1) := by
+          rw [pi_norm_le_iff_of_nonneg (by positivity)]
+          exact h_coord_diff_le
+      _ ≤ 2 * Real.sqrt (n : ℝ) * ((n : ℝ) + 1) / (l k + 1) := by
+          rw [div_le_div_iff_of_pos_right (by positivity : (0 : ℝ) < l k + 1)]
+          have h_assoc : 2 * Real.sqrt (n : ℝ) * ((n : ℝ) + 1) = 2 * (Real.sqrt (n : ℝ) * ((n : ℝ) + 1)) := by ring
+          rw [h_assoc]
+          have hsqrt : (1 : ℝ) ≤ Real.sqrt (n : ℝ) := by
+            apply Real.one_le_sqrt.mpr
+            norm_cast
+            exact PNat.one_le n
+          have hmul := mul_le_mul_of_nonneg_left hsqrt (by positivity : 0 ≤ 2 * ((n : ℝ) + 1))
+          nlinarith
+    apply Metric.diam_le_of_forall_dist_le (by positivity)
+    intro x hx y hy
+    rcases Finset.mem_image.mp hx with ⟨x', hx', rfl⟩
+    rcases Finset.mem_image.mp hy with ⟨y', hy', rfl⟩
+    exact h_dist_bound x' hx' y' hy'
+  rcases h_diam_bounded with ⟨C, hC_bound⟩
+  have h_l_tends_to_inf : Tendsto (fun k => (l k : ℝ) + 1) atTop atTop := by
+    have h_l_mono : StrictMono l := (g1 f).strictMono.comp (hpkg f).2.1
+    have h_l_tends_nat : Tendsto l atTop atTop := h_l_mono.tendsto_atTop
+    have h_l_tends_real : Tendsto (fun k => (l k : ℝ)) atTop atTop :=
+      tendsto_natCast_atTop_atTop.comp h_l_tends_nat
+    exact Tendsto.atTop_add h_l_tends_real tendsto_const_nhds
+  have h_C_div_l_tends_to_zero : Tendsto (fun k => C / (l k + 1)) atTop (𝓝 0) := by
+    exact tendsto_const_nhds.div_atTop h_l_tends_to_inf
+  exact tendsto_of_tendsto_of_tendsto_of_le_of_le (tendsto_const_nhds : Tendsto (fun _ => (0:ℝ)) atTop (𝓝 0)) h_C_div_l_tends_to_zero (fun _ => Metric.diam_nonneg) hC_bound
+
+theorem f_coords_ge_z_coords (f : stdSimplex ℝ (Fin n) → stdSimplex ℝ (Fin n)) (hf : Continuous f) :
+  ∀ i ∈ (gpkg f).1.1, (f (hpkg f).1.1).1 i ≥ ((hpkg f).1.1).1 i := by
+      let z := (hpkg f).1.1
+      let C := (gpkg f).1.1
+      let φ := (hpkg f).1.2
+      have convergence_to_z : Filter.Tendsto ((fun l' => (room_point_seq f (g1 f l'): stdSimplex ℝ (Fin n))) ∘ φ) Filter.atTop (𝓝 z) := by
+        exact (hpkg f).2.2
+      have constant_color_set : ∀ l', (room_seq f (g1 f l')).1.2 = C := by
+        exact (gpkg f).2
+      intro idx h_idx_C
+      have h_exists_point : ∀ l', ∃ y,
+        y ∈ (room_seq f (g1 f l')).1.1 ∧
+        (let l_pnat : PNat := ⟨(g1 f) l' + 1, by simp⟩; @Fcolor n l_pnat f y) = idx := by
+        intro l'
+        let l_pnat : PNat := ⟨(g1 f) l' + 1, by simp⟩
+        let rs := room_seq f (g1 f l')
+        let sigma := rs.1.1
+        let C_l := rs.1.2
+        have h_C_l : C_l = C := constant_color_set l'
+        let colorful_proof := (Finset.mem_filter.mp rs.2).2
+        have h_image_eq : sigma.image (@Fcolor n l_pnat f) = C_l := colorful_proof.2
+        have h_idx_in_C_l : idx ∈ C_l := h_C_l ▸ h_idx_C
+        have h_idx_in_image : idx ∈ sigma.image (@Fcolor n l_pnat f) := by
+          rw [h_image_eq]; exact h_idx_in_C_l
+        rw [Finset.mem_image] at h_idx_in_image
+        obtain ⟨y, hy_in_sigma, hy_color⟩ := h_idx_in_image
+        use y
+
+      let y_seq := fun l' => TTtostdSimplex (h_exists_point l').choose
+      have y_seq_spec : ∀ l',
+        (h_exists_point l').choose ∈ (room_seq f (g1 f l')).1.1 ∧
+        (let l_pnat : PNat := ⟨(g1 f) l' + 1, by simp⟩; @Fcolor n l_pnat f (h_exists_point l').choose) = idx := by
+        intro l'
+        exact (h_exists_point l').choose_spec
+
+      have h_ineq : ∀ l', (f (y_seq l')).1 idx ≥ (y_seq l').1 idx := by
+        intro l'
+        have h_spec := y_seq_spec l'
+        simp [y_seq] at h_spec ⊢
+        let chosen_point := (h_exists_point l').choose
+        have h_color : (let l_pnat : PNat := ⟨(g1 f) l' + 1, by simp⟩; @Fcolor n l_pnat f chosen_point) = idx := h_spec.2
+        let l_pnat : PNat := ⟨(g1 f) l' + 1, by simp⟩
+        unfold Fcolor at h_color
+        have h_pick_property : ∃ h : Nonempty {i | (chosen_point : stdSimplex ℝ (Fin n)).1 i ≤ (f (chosen_point : stdSimplex ℝ (Fin n))).1 i},
+          @Classical.choice _ h = idx := by
+          rw [← h_color]
+          use stdSimplex.upidx (chosen_point : stdSimplex ℝ (Fin n)) (f (chosen_point : stdSimplex ℝ (Fin n)))
+          rfl
+        obtain ⟨h_nonempty, h_choice_eq⟩ := h_pick_property
+        have h_mem : idx ∈ {i | (chosen_point : stdSimplex ℝ (Fin n)).1 i ≤ (f (chosen_point : stdSimplex ℝ (Fin n))).1 i} := by
+          let choice_prop := Classical.choice h_nonempty
+          have : idx = choice_prop.val := h_choice_eq.symm
+          rw [this]
+          exact choice_prop.property
+        exact h_mem
+
+      have y_seq_φ_converges_to_z : Filter.Tendsto (y_seq ∘ φ) Filter.atTop (𝓝 z) := by
+        have h_dist_tends_to_zero : Filter.Tendsto (fun k => dist (y_seq (φ k)) ((fun l' => (room_point_seq f (g1 f l') : stdSimplex ℝ (Fin n))) (φ k))) Filter.atTop (𝓝 0) := by
+          have h_bound : ∀ k, dist (y_seq (φ k)) ((room_point_seq f (g1 f (φ k)) : stdSimplex ℝ (Fin n))) ≤
+                Metric.diam
+                  (((room_seq f (g1 f (φ k))).1.1.image
+                    (fun x => TTtostdSimplex x) : Finset (stdSimplex ℝ (Fin n))) :
+                      Set (stdSimplex ℝ (Fin n))) := by
+            intro k
+            apply Metric.dist_le_diam_of_mem
+            · exact Set.Finite.isBounded
+                (((room_seq f (g1 f (φ k))).1.1.image
+                  (fun x => TTtostdSimplex x)).finite_toSet)
+            · exact Finset.mem_image_of_mem TTtostdSimplex (y_seq_spec (φ k)).1
+            · exact Finset.mem_image_of_mem TTtostdSimplex (pick_colorful_point ((Finset.mem_filter.1 (room_seq f (g1 f (φ k))).2).2)).2
+          have h_diam_tendsto : Tendsto (fun k =>
+              Metric.diam
+                (((room_seq f (g1 f (φ k))).1.1.image TTtostdSimplex :
+                  Finset (stdSimplex ℝ (Fin n))) : Set (stdSimplex ℝ (Fin n)))) atTop
+              (𝓝 0) := by
+            exact tendsto_diam_to_zero f
+          exact tendsto_of_tendsto_of_tendsto_of_le_of_le' tendsto_const_nhds h_diam_tendsto
+            (Eventually.of_forall (fun _ => dist_nonneg)) (Eventually.of_forall h_bound)
+        rw [Metric.tendsto_nhds]
+        intro ε hε
+        have h1 := (Metric.tendsto_nhds.1 convergence_to_z) (ε / 2) (half_pos hε)
+        have h2 := (Metric.tendsto_nhds.1 h_dist_tends_to_zero) (ε / 2) (half_pos hε)
+        apply (h1.and h2).mono
+        intro k ⟨hk1, hk2⟩
+        calc dist (y_seq (φ k)) z
+          ≤ dist (y_seq (φ k)) ((room_point_seq f (g1 f (φ k)) : stdSimplex ℝ (Fin n)))
+            + dist ((room_point_seq f (g1 f (φ k)) : stdSimplex ℝ (Fin n))) z := dist_triangle _ _ _
+        _ < ε / 2 + ε / 2 := add_lt_add (by simp at hk2; exact hk2) hk1
+        _ = ε := add_halves ε
+
+      have f_y_seq_φ_converges_to_f_z : Filter.Tendsto (f ∘ y_seq ∘ φ) Filter.atTop (𝓝 (f z)) := by
+        exact hf.continuousAt.tendsto.comp y_seq_φ_converges_to_z
+      have f_y_seq_φ_coord_converges : Filter.Tendsto (fun l' => (f (y_seq (φ l'))).1 idx) Filter.atTop (𝓝 ((f z).1 idx)) := by
+        have h_continuous : Continuous (fun x : stdSimplex ℝ (Fin n) => x.1 idx) :=
+          Continuous.comp (continuous_apply idx) continuous_subtype_val
+        exact h_continuous.continuousAt.tendsto.comp f_y_seq_φ_converges_to_f_z
+      have y_seq_φ_coord_converges : Filter.Tendsto (fun l' => (y_seq (φ l')).1 idx) Filter.atTop (𝓝 (z.1 idx)) := by
+        have h_continuous : Continuous (fun x : stdSimplex ℝ (Fin n) => x.1 idx) :=
+          Continuous.comp (continuous_apply idx) continuous_subtype_val
+        exact h_continuous.continuousAt.tendsto.comp y_seq_φ_converges_to_z
+
+      exact le_of_tendsto_of_tendsto y_seq_φ_coord_converges f_y_seq_φ_coord_converges (Eventually.of_forall (fun l' => h_ineq (φ l')))
+
+theorem Brouwer (hf : Continuous f): ∃ x , f x = x := by
+  let z := (hpkg f).1.1
+  let C := (gpkg f).1.1
+  let φ := (hpkg f).1.2
+
+  use z
+
+  have h_tendsto_diam := tendsto_diam_to_zero f
+
+  have convergence_to_z : Filter.Tendsto ((fun l' => (room_point_seq f (g1 f l'): stdSimplex ℝ (Fin n))) ∘ φ) Filter.atTop (𝓝 z) :=
+    (hpkg f).2.2
+
+  have constant_color_set : ∀ l', (room_seq f (g1 f l')).1.2 = C :=
+    (gpkg f).2
+
+  have coords_outside_C_zero : ∀ i_1 ∉ C, z.1 i_1 = 0 := by
+    intro i_1 hi_not_C
+    have tendsto_zero : Filter.Tendsto (fun l' => ((room_point_seq f (g1 f l')) : stdSimplex ℝ (Fin n)).1 i_1) Filter.atTop (𝓝 0) :=
+      dominant_coords_tend_to_zero f C (g1 f) constant_color_set i_1 hi_not_C
+    have h_tendsto_coord_z : Tendsto (fun k => ((room_point_seq f (g1 f (φ k))) : stdSimplex ℝ (Fin n)).1 i_1) atTop (𝓝 (z.1 i_1)) := by
+      have h_continuous : Continuous (fun x : stdSimplex ℝ (Fin n) => x.1 i_1) :=
+        Continuous.comp (continuous_apply i_1) continuous_subtype_val
+      exact h_continuous.continuousAt.tendsto.comp convergence_to_z
+    have tendsto_zero_subseq : Tendsto (fun k => ((room_point_seq f (g1 f (φ k))) : stdSimplex ℝ (Fin n)).1 i_1) atTop (𝓝 0) :=
+      (dominant_coords_tend_to_zero f C (g1 f) constant_color_set i_1 hi_not_C).comp (hpkg f).2.1.tendsto_atTop
+    exact tendsto_nhds_unique h_tendsto_coord_z tendsto_zero_subseq
+
+  have sum_coords_in_C_eq_one : ∑ i_1 ∈ C, z.1 i_1 = 1 := by
+    have total_sum_eq_one : ∑ i, z.1 i = 1 := z.2.2
+    have split_sum : ∑ i, z.1 i = ∑ i ∈ C, z.1 i + ∑ i ∈ Cᶜ, z.1 i :=
+      (Finset.sum_add_sum_compl C (z.1)).symm
+    have compl_sum_zero : ∑ i ∈ Cᶜ, z.1 i = 0 := by
+      apply Finset.sum_eq_zero
+      intro i_1 hi
+      exact coords_outside_C_zero i_1 (Finset.mem_compl.mp hi)
+    rw [split_sum, compl_sum_zero, add_zero] at total_sum_eq_one
+    exact total_sum_eq_one
+
+  have f_coords_ge_z_coords := f_coords_ge_z_coords f hf
+
+  have sum_f_coords_ge_one : ∑ i_1 ∈ C, (f z).1 i_1 ≥ 1 := by
+    calc ∑ i_1 ∈ C, (f z).1 i_1
+        ≥ ∑ i_1 ∈ C, z.1 i_1 := Finset.sum_le_sum fun i_1 hi => f_coords_ge_z_coords i_1 hi
+      _ = 1 := sum_coords_in_C_eq_one
+
+  have f_coords_outside_C_zero : ∀ i_1 ∉ C, (f z).1 i_1 = 0 := by
+    intro i_1 hi_not_C
+    have total_sum_f : ∑ i, (f z).1 i = 1 := (f z).2.2
+    have sum_f_C_eq_one : ∑ i_2 ∈ C, (f z).1 i_2 = 1 := by
+      have : ∑ i_2 ∈ C, (f z).1 i_2 ≤ 1 := by
+        calc ∑ i_2 ∈ C, (f z).1 i_2
+          ≤ ∑ i, (f z).1 i := Finset.sum_le_sum_of_subset_of_nonneg (Finset.subset_univ C) (fun i_2 _ _ => (f z).2.1 i_2)
+          _ = 1 := total_sum_f
+      exact le_antisymm this sum_f_coords_ge_one
+    have compl_sum_zero : ∑ i_2 ∈ Cᶜ, (f z).1 i_2 = 0 := by
+      have split_sum : ∑ i, (f z).1 i = ∑ i ∈ C, (f z).1 i + ∑ i ∈ Cᶜ, (f z).1 i :=
+        (Finset.sum_add_sum_compl C ((f z).1)).symm
+      rw [total_sum_f, sum_f_C_eq_one] at split_sum
+      linarith
+    have hi_in_compl : i_1 ∈ Cᶜ := Finset.mem_compl.mpr hi_not_C
+    have h_nonneg : (f z).1 i_1 ≥ 0 := (f z).2.1 i_1
+    have h_le_sum : (f z).1 i_1 ≤ ∑ j ∈ Cᶜ, (f z).1 j := Finset.single_le_sum (fun j _ => (f z).2.1 j) hi_in_compl
+    rw [compl_sum_zero] at h_le_sum
+    exact le_antisymm h_le_sum h_nonneg
+
+  have f_coords_eq_z_coords : ∀ i_1 ∈ C, (f z).1 i_1 = z.1 i_1 := by
+    intro i_1 hi_C
+    have h_sum_f_C_eq_one : ∑ i_2 ∈ C, (f z).1 i_2 = 1 := by
+      have total_sum_f : ∑ i, (f z).1 i = 1 := (f z).2.2
+      have : ∑ i_2 ∈ C, (f z).1 i_2 ≤ 1 := by
+        calc
+          ∑ i_2 ∈ C, (f z).1 i_2 ≤ ∑ i, (f z).1 i := Finset.sum_le_sum_of_subset_of_nonneg (Finset.subset_univ C) (fun i_2 _ _ => (f z).2.1 i_2)
+          _ = 1 := total_sum_f
+      exact le_antisymm this (sum_f_coords_ge_one)
+    have h_sum_eq : ∑ i_2 ∈ C, (f z).1 i_2 = ∑ i_2 ∈ C, z.1 i_2 := by
+      rw [h_sum_f_C_eq_one, sum_coords_in_C_eq_one]
+    exact (((Finset.sum_eq_sum_iff_of_le fun i_2 hi => f_coords_ge_z_coords i_2 hi).mp h_sum_eq.symm) i_1 hi_C).symm
+
+  ext i_1
+  by_cases hi : i_1 ∈ C
+  · exact f_coords_eq_z_coords i_1 hi
+  · exact (f_coords_outside_C_zero i_1 hi).trans (coords_outside_C_zero i_1 hi).symm
+
+
+end Brouwer
+
+end
+
+lemma continuous_stdSimplex_map {X Y : Type*} [Fintype X] [Fintype Y]
+    (f : X → Y) : Continuous (stdSimplex.map (S := ℝ) f) := by
+  apply Continuous.subtype_mk
+  exact (FunOnFinite.linearMap ℝ ℝ f).continuous_of_finiteDimensional.comp continuous_subtype_val
+
+
+theorem stdSimplex_exists_isFixedPt_of_continuous {ι : Type*} [Fintype ι] [Nonempty ι]
+    (f : stdSimplex ℝ ι → stdSimplex ℝ ι) (hf : Continuous f) :
+    ∃ x, Function.IsFixedPt f x := by
+  classical
+  let k : ℕ+ := ⟨Fintype.card ι, Fintype.card_pos_iff.mpr ‹Nonempty ι›⟩
+  let e : ι ≃ Fin k := Fintype.equivFin ι
+  let toFin : stdSimplex ℝ ι → stdSimplex ℝ (Fin k) := stdSimplex.map e
+  let fromFin : stdSimplex ℝ (Fin k) → stdSimplex ℝ ι := stdSimplex.map e.symm
+  let g : stdSimplex ℝ (Fin k) → stdSimplex ℝ (Fin k) := fun y => toFin (f (fromFin y))
+  have hg : Continuous g := by
+    exact (continuous_stdSimplex_map e).comp (hf.comp (continuous_stdSimplex_map e.symm))
+  obtain ⟨y, hy⟩ := Brouwer (n := k) (f := g) hg
+  refine ⟨fromFin y, ?_⟩
+  have hcongr : fromFin (g y) = fromFin y := congrArg fromFin hy
+  have hleft : fromFin (toFin (f (fromFin y))) = f (fromFin y) := by
+    dsimp [fromFin, toFin]
+    rw [stdSimplex.map_comp_apply]
+    convert stdSimplex.map_id_apply (S := ℝ) (f (stdSimplex.map e.symm y)) using 2
+    funext i
+    simp
+  dsimp [g] at hcongr
+  rw [hleft] at hcongr
+  exact hcongr
 end PerronFrobenius
 
-/-!
-# Perron-Frobenius benchmark scaffold
 
-Benchmark statement:
-`irreducible_nonnegative_matrix_has_positive_eigenvector_at_spectralRadius`.
-
-Mathlib has useful ingredients:
-* `Matrix.IsIrreducible` bundles entrywise nonnegativity and strong connectivity.
-* `Matrix.isIrreducible_iff_exists_pow_pos` converts irreducibility to positive entries in powers.
-* `spectralRadius` and finite-dimensional spectrum/eigenvalue bridges are available.
-
-Main missing bridge to test/prove:
-fixed-point existence for the continuous self-map `normalizedOneAddMulVec A hA.nonneg` of
-`stdSimplex ℝ n`. Once a fixed point exists, the scaffold now constructs a positive eigenvector
-and uses a Collatz-Wielandt coordinate comparison to identify its eigenvalue with
-`(spectralRadius ℝ A).toReal`.
-The corrected benchmark statement includes `[Nonempty n]`: `Matrix.IsIrreducible` is vacuous for
-`Empty`, while `HasEigenvector` cannot hold on `Empty → ℝ`.
-
-Phases:
-1. Cone mechanics: nonnegative vectors are preserved by `A.mulVec` and by powers of `A`.
-2. Irreducibility upgrade: if `v ≥ 0`, `v ≠ 0`, `A.mulVec v = r • v`, and `0 < r`, then `v > 0`.
-3. Collatz-Wielandt bound: a positive subeigenvector `A.mulVec v ≤ r • v` bounds every real
-   eigenvalue by `r`, hence `spectralRadius ℝ A ≤ ‖r‖₊`.
-4. Perron existence: construct or import a fixed point of `normalizedOneAddMulVec`.
-   This appears to be the remaining theorem not currently packaged in Mathlib.
-
-Plan to remove the last `sorry`:
-
-* Add a Mathlib-level theorem, not a Perron-specific axiom:
-  `stdSimplex.exists_isFixedPt_of_continuous :
-    ∀ f : stdSimplex ℝ n → stdSimplex ℝ n, Continuous f →
-      ∃ x, Function.IsFixedPt f x`.
-* Prove it by one of two routes:
-  1. General Brouwer fixed point for compact convex subsets of finite-dimensional real normed
-     spaces, then specialize to `stdSimplex`.
-  2. A dedicated Sperner/KKM proof for `stdSimplex`; this is narrower but still requires
-     substantial combinatorial topology infrastructure.
-* Once that theorem exists, the final proof below is one line using
-  `continuous_normalizedOneAddMulVec`.
-
-The current Mathlib snapshot has the interval fixed-point theorem
-`exists_mem_Icc_isFixedPt_of_mapsTo` and Banach's contraction theorem, but no higher-dimensional
-Brouwer/Schauder theorem found under the topology, convexity, or algebraic-topology APIs.
--/
 
 theorem irreducible_nonnegative_matrix_has_positive_eigenvector_at_spectralRadius
     {n : Type*} [Fintype n] [DecidableEq n] [Nonempty n]
