@@ -3884,7 +3884,7 @@ theorem stdSimplex_exists_isFixedPt_of_continuous {ι : Type*} [Fintype ι] [Non
   exact hcongr
 end PerronFrobenius
 
-
+namespace Submission
 
 theorem irreducible_nonnegative_matrix_has_positive_eigenvector_at_spectralRadius
     {n : Type*} [Fintype n] [DecidableEq n] [Nonempty n]
@@ -3898,3 +3898,5 @@ theorem irreducible_nonnegative_matrix_has_positive_eigenvector_at_spectralRadiu
       (PerronFrobenius.stdSimplex_exists_isFixedPt_of_continuous
         (PerronFrobenius.normalizedOneAddMulVec A hA.nonneg)
         (PerronFrobenius.continuous_normalizedOneAddMulVec A hA.nonneg))
+
+end Submission
