@@ -1,4 +1,4 @@
-name = "minkowski_caratheodory"
+name = "mem_convexHull_finset_extremePoints_of_mem_compact_convex"
 testDriver = "workspace_test"
 defaultTargets = ["Challenge", "Solution", "Submission"]
 
