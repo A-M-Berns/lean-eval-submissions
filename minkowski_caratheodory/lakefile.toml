@@ -1,0 +1,21 @@
+name = "minkowski_caratheodory"
+testDriver = "workspace_test"
+defaultTargets = ["Challenge", "Solution", "Submission"]
+
+[[require]]
+name = "mathlib"
+scope = "leanprover-community"
+rev = "v4.29.0"
+
+[[lean_lib]]
+name = "Challenge"
+
+[[lean_lib]]
+name = "Solution"
+
+[[lean_lib]]
+name = "Submission"
+
+[[lean_exe]]
+name = "workspace_test"
+root = "WorkspaceTest"
