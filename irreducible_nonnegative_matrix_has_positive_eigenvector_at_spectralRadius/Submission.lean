@@ -7,6 +7,8 @@ import Mathlib.LinearAlgebra.Matrix.Irreducible.Defs
 import Mathlib.LinearAlgebra.Matrix.ToLin
 import Mathlib.Tactic
 
+set_option autoImplicit true
+
 open scoped ENNReal
 
 namespace PerronFrobenius
